@@ -108,8 +108,8 @@ def prepare_and_combine_gr_data(file_names):
             df = df.dropna(subset=['County_Name'])
 
             # dates fixer
-            df['Date'] = pd.to_datetime(df['Report_Month'], format='%b %Y', errors='coerce')
-            df = df.dropna(subset=['Date'])
+df['Date'] = pd.to_datetime(df['Report_Month'], errors='coerce') 
+df = df.dropna(subset=['Date'])
             
             # num fixer
             for col in metric_cols:
