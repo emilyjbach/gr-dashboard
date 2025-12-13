@@ -161,7 +161,10 @@ st.sidebar.header("Filter Options")
 selected_counties = st.sidebar.multiselect(
     "Select County(s):",
     options=all_counties,
-    default=all_counties[:3]
+    default=[
+        "Alameda",
+        "Fresno",
+    ]
 )
 
 # metric
