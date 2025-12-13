@@ -206,7 +206,7 @@ else:
         color='County_Metric',
         tooltip=['Report_Month', 'County_Name', 'Metric', alt.Tooltip('Value', format=',.0f')]
     ).properties(
-        title="GR Trends: Cases and Expenditures Over Time"
+        title="Interactive GR Database [EB DRAFT]"
     ).interactive() 
 
     line_chart = base.mark_line(point=True)
