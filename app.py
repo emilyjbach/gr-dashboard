@@ -3,9 +3,7 @@ import pandas as pd
 import altair as alt
 import os
 
-# =========================================================================
-# === CRITICAL STEP: INSERT ALL OF YOUR RAW GR FILE NAMES HERE ===
-# The Streamlit server MUST be able to find all these files in the GitHub repo.
+
 GR_FILE_NAMES = [
     "15-16.csv",
     "16-17.csv",
@@ -17,17 +15,14 @@ GR_FILE_NAMES = [
     "22-23.csv",
     "23-24.csv",
     "24-25.csv", 
-]
-# =========================================================================
-
-# --- Configuration ---
+# config
 st.set_page_config(
     page_title="General Relief (GR) Interactive Database",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- Data Preparation and Combination Function (MOVED INSIDE APP) ---
+#  data prep (moved inside system)
 @st.cache_data
 def prepare_and_combine_gr_data(file_names):
     """
@@ -97,32 +92,32 @@ def prepare_and_combine_gr_data(file_names):
             continue
 
         try:
-            # Load data with descriptive header row (index 4)
+            
             df = pd.read_csv(file_name, header=4)
             
-            # Rename columns based on index position
+            
             df.columns = [column_index_map.get(i, col) for i, col in enumerate(df.columns)]
             
-            # Select only the columns we successfully mapped
+            
             cols_to_keep = [name for name in column_index_map.values() if name in df.columns]
             df = df[cols_to_keep].copy()
 
-            # Data Cleaning and Preparation
+            # data clean & prep
             df = df[df["County_Name"] != "Statewide"].copy()
             df = df.dropna(subset=['County_Name'])
 
-            # Date conversion
+            # dates fixer
             df['Date'] = pd.to_datetime(df['Report_Month'], format='%b %Y', errors='coerce')
             df = df.dropna(subset=['Date'])
             
-            # Numeric conversion
+            # num fixer
             for col in metric_cols:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce')
 
             df = df.dropna(subset=metric_cols, how='all')
 
-            # Melt data to Long Format
+            # melt!!!!
             id_vars = ['Date', 'Report_Month', 'County_Name', 'County_Code']
             existing_metric_cols = [col for col in metric_cols if col in df.columns]
             
@@ -138,7 +133,7 @@ def prepare_and_combine_gr_data(file_names):
         except Exception as e:
             st.error(f"Error processing {file_name}: {e}")
 
-    # Combine all dataframes
+    # comb dataframes
     if all_data_frames:
         df_combined = pd.concat(all_data_frames, ignore_index=True)
         df_combined = df_combined.sort_values('Date').reset_index(drop=True)
@@ -148,43 +143,41 @@ def prepare_and_combine_gr_data(file_names):
         st.error("No data could be processed and combined. Check file names and structure.")
         return pd.DataFrame()
 
-# --- Load Data (Runs combination) ---
+# run data combination 
 data = prepare_and_combine_gr_data(GR_FILE_NAMES)
 
 if data.empty:
     st.stop()
 
-# Get unique lists for selectors
+# get uq lists for selectors 
 all_counties = sorted(data['County_Name'].unique().tolist())
 metric_categories = data['Metric'].unique().tolist()
 
-# --- Sidebar Filters ---
+# sidebar filters
 st.sidebar.header("Filter Options")
 
-# 1. County Selection
+# county
 selected_counties = st.sidebar.multiselect(
     "Select County(s):",
     options=all_counties,
     default=all_counties[:3]
 )
 
-# 2. Metric Selection
+# metric
 st.sidebar.subheader("Select Metric(s) to Overlay")
 selected_metrics = st.sidebar.multiselect(
     "Select Metric(s):",
     options=metric_categories,
     default=[
         "B. 6. Total General Relief Cases", 
-        "B. 6. Total GR Expenditure", 
-        "E. Net General Relief Expenditure"
     ]
 )
 
-# --- Main Application Content ---
-st.title("General Relief (GR) Monthly Caseload and Expenditure Trends")
+# user prompts
+st.title("GR 237: General Relief")
 st.markdown("Use the sidebar filters to compare multiple counties and multiple metrics on the chart below.")
 
-# --- Data Filtering ---
+# data filtering
 if not selected_counties or not selected_metrics:
     st.info("Please select at least one county and one metric from the sidebar.")
     st.stop()
@@ -196,7 +189,7 @@ df_filtered = data[
 
 df_filtered = df_filtered.dropna(subset=['Value'])
 
-# --- Visualization ---
+# viz
 if df_filtered.empty:
     st.warning("No data found for the selected combination of counties and metrics.")
 else:
