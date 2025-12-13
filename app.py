@@ -1,101 +1,115 @@
+import streamlit as st
 import pandas as pd
-import numpy as np
-import os
+import altair as alt
 
-def prepare_and_combine_gr_data(file_names):
+# --- Configuration ---
+st.set_page_config(
+    page_title="General Relief (GR) Interactive Database",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# --- Data Loading Function ---
+@st.cache_data
+def load_data(file_path):
     """
-    Loads, cleans, and combines multiple GR data files into a single long-format DataFrame.
+    Loads the prepared data from CSV. 
+    Using st.cache_data ensures the data is loaded only once, 
+    making the deployed app faster and more stable.
     """
-    all_data_frames = []
+    df = pd.read_csv(file_path)
+    # Ensure Date is in datetime format for chronological sorting
+    df['Date'] = pd.to_datetime(df['Date'])
     
-    # Column mapping based on the identified structure (Row 4/Index 3 headers)
-    metric_columns = {
-        # County/Date Identifiers
-        "Unnamed: 0": "Date_Code",
-        "Unnamed: 1": "County_Name",
-        "Unnamed: 3": "County_Code",
-        "Unnamed: 6": "Report_Month",
+    # Ensure 'Report_Month' exists and is formatted correctly for tooltips/display
+    df['Report_Month'] = df['Date'].dt.strftime('%b %Y')
+    return df
 
-        # Key Metrics (as identified in previous step)
-        "CASES\nA": "Total GR Cases",
-        "Unnamed: 15": "One-person Cases",
-        "AMOUNT\nC": "Total GR Expenditure",
-        "Net General Relief\nExpenditure": "Net GR Expenditure"
-    }
-    metrics_to_melt = ['Total GR Cases', 'One-person Cases', 'Total GR Expenditure', 'Net GR Expenditure']
+# Load the prepared data file
+DATA_FILE = "gr_data_prepared.csv"
+try:
+    # This file MUST be present in the same GitHub repository folder as this script.
+    data = load_data(DATA_FILE)
+except FileNotFoundError:
+    st.error(f"Error: Data file '{DATA_FILE}' not found.")
+    st.info("Please ensure 'gr_data_prepared.csv' is committed and pushed to your GitHub repository.")
+    st.stop()
 
-    for file_name in file_names:
-        print(f"Processing file: {file_name}")
-        try:
-            # 1. Load data with correct header
-            df = pd.read_csv(file_name, header=3)
+# Get unique lists for selectors
+all_counties = sorted(data['County_Name'].unique().tolist())
+all_metrics = data['Metric'].unique().tolist()
 
-            # 2. Select and Rename Columns
-            df = df.rename(columns=metric_columns)
-            cols_to_keep = [col for col in metric_columns.values() if col in df.columns]
-            df = df[cols_to_keep].copy()
+# --- Sidebar Filters ---
+st.sidebar.header("Filter Options")
 
-            # 3. Data Cleaning and Preparation
-            # Filter out "Statewide" and metadata rows
-            df = df[df["County_Name"] != "Statewide"].copy()
-            df = df.dropna(subset=['County_Name'])
+# 1. County Selection
+selected_counties = st.sidebar.multiselect(
+    "Select County(s):",
+    options=all_counties,
+    default=all_counties[:3] # Default to the first three counties
+)
 
-            # Convert month string to datetime object
-            df['Date'] = pd.to_datetime(df['Report_Month'], format='%b %Y', errors='coerce')
-            df = df.dropna(subset=['Date'])
-            
-            # Convert metric columns to numeric
-            for col in metrics_to_melt:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
+# 2. Metric Selection
+selected_metrics = st.sidebar.multiselect(
+    "Select Metric(s) to Overlay:",
+    options=all_metrics,
+    default=all_metrics
+)
 
-            # Drop rows where all key metrics are NaN after coercion
-            df = df.dropna(subset=metrics_to_melt, how='all')
+# --- Main Application Content ---
+st.title("General Relief (GR) Monthly Caseload and Expenditure Trends")
 
-            # 4. Melt data to Long Format
-            df_long = pd.melt(
-                df,
-                id_vars=['Date', 'Report_Month', 'County_Name', 'County_Code'],
-                value_vars=metrics_to_melt,
-                var_name='Metric',
-                value_name='Value'
-            )
-            all_data_frames.append(df_long)
+# --- Data Filtering ---
+if not selected_counties or not selected_metrics:
+    st.info("Please select at least one county and one metric from the sidebar.")
+    st.stop()
 
-        except FileNotFoundError:
-            print(f"ERROR: File not found: {file_name}. Skipping.")
-        except Exception as e:
-            print(f"ERROR processing {file_name}: {e}. Skipping.")
+# Filter the data based on user selections
+df_filtered = data[
+    data['County_Name'].isin(selected_counties) &
+    data['Metric'].isin(selected_metrics)
+].copy()
 
-    # 5. Combine all dataframes
-    if all_data_frames:
-        df_combined = pd.concat(all_data_frames, ignore_index=True)
-        # Sort by Date chronologically
-        df_combined = df_combined.sort_values('Date').reset_index(drop=True)
-        return df_combined
-    else:
-        return pd.DataFrame()
+# Drop rows where 'Value' is NaN 
+df_filtered = df_filtered.dropna(subset=['Value'])
 
-gr_file_list = [
-    "16-17.csv",
-    "17-18.csv",
-    "17-18.csv",
-    "18-19.csv",
-    "19-20.csv",
-    "20-21.csv",
-    "21-22.csv",
-    "22-23.csv",
-    "23-24.csv",
-    "24-25.csv",
-]
+# --- Visualization ---
 
-# --- Execution ---
-df_final_long = prepare_and_combine_gr_data(gr_file_list)
-
-if not df_final_long.empty:
-    # 6. Save the final prepared data to a CSV
-    df_final_long.to_csv("gr_data_prepared.csv", index=False)
-    print("\nSuccessfully combined all files and saved the data to 'gr_data_prepared.csv'.")
-    print("You can now run the Streamlit app.")
+if df_filtered.empty:
+    st.warning("No data found for the selected combination of counties and metrics.")
 else:
-    print("\nNo data was successfully processed and combined. Please check the file names.")
+    # Create a combined column for color/legend to allow overlay of both county and metric
+    df_filtered['County_Metric'] = df_filtered['County_Name'] + ' - ' + df_filtered['Metric']
+
+    # Base chart setup
+    base = alt.Chart(df_filtered).encode(
+        # X-axis is the date, sorted chronologically
+        x=alt.X('Date', axis=alt.Axis(title='Report Month', format="%Y-%m")),
+        # Y-axis is the value
+        y=alt.Y('Value', title='Value (Cases or Expenditures)', scale=alt.Scale(zero=False)),
+        # Color encoding combines both county and metric for overlaying
+        color='County_Metric',
+        tooltip=['Report_Month', 'County_Name', 'Metric', alt.Tooltip('Value', format=',.0f')]
+    ).properties(
+        title="GR Trends: Cases and Expenditures Over Time"
+    ).interactive() # Allows for zooming and panning
+
+    # Line Chart Layer
+    line_chart = base.mark_line(point=True)
+
+    st.altair_chart(line_chart, use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("Raw Data Preview")
+    st.dataframe(df_filtered[['Report_Month', 'County_Name', 'Metric', 'Value']].reset_index(drop=True))
+
+    # --- Metrics Legend ---
+    st.sidebar.markdown("### Metric Definitions")
+    st.sidebar.markdown(
+        """
+        - **Total GR Cases**: Total General Relief Cases 
+        - **One-person Cases**: General Relief One-person cases 
+        - **Total GR Expenditure**: Total General Relief Expenditures 
+        - **Net GR Expenditure**: Net General Relief Expenditure 
+        """
+    )
