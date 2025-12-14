@@ -194,5 +194,5 @@ df_filtered = data[
     data['Metric'].isin(selected_metrics)
 ].copy
 st.markdown("---")
-    st.subheader("Raw Data Preview")
-    st.dataframe(df_filtered[['Report_Month', 'County_Name', 'Metric', 'Value']].reset_index(drop=True))
+st.subheader("Raw Data Preview")
+st.dataframe(df_filtered[['Report_Month', 'County_Name', 'Metric', 'Value']].reset_index(drop=True))
