@@ -28,12 +28,17 @@ st.markdown(
       section[data-testid="stSidebar"] .block-container { padding-top: 1.2rem; }
       section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 { letter-spacing: -0.02em; }
 
-      div.st-emotion-cache-6qob1r.eczjsme3 {
-            color: white;
-            background-color: blue;
-            
-        }
-
+st.markdown(
+    """
+<style>
+.sidebar .sidebar-content {
+    background-image: linear-gradient(#2e7bcf,#2e7bcf);
+    color: white;
+}
+</style>
+""",
+    unsafe_allow_html=True,
+)
 
       /* top hero card */
       .gr-hero {
