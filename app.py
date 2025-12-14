@@ -113,7 +113,7 @@ st.markdown(
 # end styling
 
 st.title("General Relief")
-st.caption("Emily Bach (Development, Visualization), CDSS (Data)")
+st.caption("Emily Bach (Development, Visualization) | CDSS (Data) | Language: Python")
 
 # files
 
