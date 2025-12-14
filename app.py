@@ -2,7 +2,51 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 import os
-import re # We need the regex module for advanced filtering
+import re # We need the regex module for custom sorting
+
+# --- Helper Function for Custom Metric Sorting ---
+def metric_sort_key(metric_name):
+    """
+    Custom key function to sort metrics in bureaucratic order (e.g., A. 1., A. 2., B. 6.)
+    It extracts the main section letter and any subsequent numbers.
+    """
+    # Regex to capture the main letter (e.g., 'A', 'B') and the primary number (e.g., '1', '6')
+    match = re.match(r'([A-E])\.\s*(\d+(\.\d+)?)?', metric_name)
+    
+    if match:
+        main_letter = match.group(1) # 'A', 'B', 'C', etc.
+        main_number_str = match.group(2) # '1', '6', '6a', etc.
+        
+        # 1. Sort by the main letter (A, B, C, D, E)
+        primary_sort = main_letter
+        
+        # 2. Sort by the numeric part, handling missing numbers and sub-letters (a, b)
+        secondary_sort = 0
+        tertiary_sort = 0 # for sub-letters a, b
+        
+        if main_number_str:
+            # Convert primary number part to float for proper numeric sorting (1.0, 6.0)
+            try:
+                secondary_sort = float(main_number_str)
+            except ValueError:
+                secondary_sort = 999 # Place non-standard numbers at the end
+        
+        # 3. Handle sub-section letters like 'a' and 'b' (e.g., B. 6a vs B. 6b)
+        if 'a.' in metric_name or 'a ' in metric_name:
+            tertiary_sort = 1
+        elif 'b.' in metric_name or 'b ' in metric_name:
+            tertiary_sort = 2
+            
+        # The key is a tuple: (Letter, Primary Number, Sub-Letter)
+        return (primary_sort, secondary_sort, tertiary_sort)
+    
+    # Place identifiers and uncategorized metrics at the very beginning or end
+    if metric_name in ["Date_Code", "County_Name", "County_Code", "Report_Month"]:
+        return ('@', 0, 0) # Sorts before A
+    if "Net General Relief Expenditure" in metric_name:
+        return ('F', 0, 0) # Place E at the very end
+    
+    return ('Z', 0, 0) # Fallback for anything that doesn't match the pattern
 
 # --- File List ---
 GR_FILE_NAMES = [
@@ -109,7 +153,7 @@ def prepare_and_combine_gr_data(file_names):
             # 1. Ensure County_Name is always a string (fixes TypeError on sorted())
             df['County_Name'] = df['County_Name'].astype(str)
             
-            # 2. CRITICAL FIX: Filter out rows where County_Name is purely numeric/looks like a number (e.g., "5.0", "True", etc.)
+            # 2. Filter out rows where County_Name is purely numeric/looks like a number
             numeric_mask = df['County_Name'].str.match(r'^\d+(\.\d+)?$')
             df = df[~numeric_mask].copy()
 
@@ -176,6 +220,10 @@ st.success(f"Data Loaded successfully: {len(data)} rows and {len(data.columns)} 
 all_counties = sorted(data['County_Name'].unique().tolist())
 metric_categories = data['Metric'].unique().tolist()
 
+# CRITICAL CHANGE: Use the custom sort key here
+metric_categories = sorted(metric_categories, key=metric_sort_key) 
+
+
 # sidebar filters
 st.sidebar.header("Filter Options")
 
@@ -193,7 +241,7 @@ selected_counties = st.sidebar.multiselect(
 st.sidebar.subheader("Select Metric(s) to Overlay")
 selected_metrics = st.sidebar.multiselect(
     "Select Metric(s):",
-    options=metric_categories,
+    options=metric_categories, # This is now custom sorted
     default=[
         "B. 6. Total General Relief Cases", 
     ]
