@@ -5,7 +5,7 @@ import os
 import re
 from datetime import date
 
-# Altair silently truncates >5000 rows unless you disable this
+# Altair silently truncates >5000 rows unless disabled
 alt.data_transformers.disable_max_rows()
 
 st.set_page_config(
@@ -33,6 +33,7 @@ def metric_sort_key(metric_name):
 
 # ----------------------------
 # Files expected
+# NOTE: now includes 20-21 through 24-25
 # ----------------------------
 GR_FILE_NAMES = [
     "15-16.csv",
@@ -48,19 +49,15 @@ GR_FILE_NAMES = [
 ]
 
 def resolve_path(fname):
-    # Streamlit Cloud / this sandbox: uploaded files are in /mnt/data
-    p1 = os.path.join("/mnt/data", fname)
-    if os.path.exists(p1):
-        return p1
-    # Fallback: local working dir
+    p = os.path.join("/mnt/data", fname)
+    if os.path.exists(p):
+        return p
     if os.path.exists(fname):
         return fname
     return None
 
 # ----------------------------
 # Canonical metric order for GR237
-# In these exports, after FFY the remaining columns are numbered 1..N
-# We map them by position to these names.
 # ----------------------------
 METRICS_IN_ORDER = [
     "A. Adjustment",
@@ -101,14 +98,9 @@ METRICS_IN_ORDER = [
 ]
 
 # ----------------------------
-# Robust reader for these "accessible table" CSV exports
-# Key fix vs your previous versions:
-# - Do NOT assume header=4.
-# - These files contain multiline quoted headers.
-# - The reliable way is: read a small probe with engine="python", find the row where col0="Date",
-#   then read the full file using that row as header.
+# Header detection via probe parsing (works across years)
 # ----------------------------
-def detect_header_row_by_parsing(path, max_probe_rows=120):
+def detect_header_row_by_parsing(path, max_probe_rows=160):
     try:
         probe = pd.read_csv(path, header=None, engine="python", nrows=max_probe_rows)
     except Exception:
@@ -124,25 +116,22 @@ def detect_header_row_by_parsing(path, max_probe_rows=120):
         c1 = norm(probe.iat[i, 1]) if probe.shape[1] > 1 else ""
         c2 = norm(probe.iat[i, 2]) if probe.shape[1] > 2 else ""
         c3 = norm(probe.iat[i, 3]) if probe.shape[1] > 3 else ""
-        # Typical header row: Date, Month, Year, County Name, County Code, SFY, FFY, 1, 2, 3...
-        if c0 == "date" and c1 == "month" and c2 == "year" and "county" in c3:
+        if c0 == "date" and c1 == "month" and c2 == "year" and ("county" in c3):
             return i
-
     return None
 
 def read_gr_file(path):
     base = os.path.basename(path)
     header_row = detect_header_row_by_parsing(path)
-
     if header_row is None:
-        return None, base + ": could not find header row (Date/Month/Year...) in probe"
+        return None, base + ": could not find header row"
 
     try:
         df = pd.read_csv(path, header=header_row, engine="python")
     except Exception as e:
-        return None, base + ": failed reading with detected header row " + str(header_row) + " (" + str(e) + ")"
+        return None, base + ": failed read (" + str(e) + ")"
 
-    # Normalize expected key columns
+    # Normalize key columns
     rename_map = {
         "Date": "Date_Code",
         "County Name": "County_Name",
@@ -150,17 +139,41 @@ def read_gr_file(path):
         "County": "County_Name",
         "County Code": "County_Code",
         "County code": "County_Code",
+        "County_Code": "County_Code",
     }
     df = df.rename(columns=rename_map)
 
-    return df, base + ": read with header row " + str(header_row)
+    return df, base + ": header row " + str(header_row)
 
+# ----------------------------
+# Date parsing
+# FIX: supports BOTH:
+# - Jul15 style (older exports)
+# - 202007 / 2020-07 / 07/2020 style (newer exports)
+# ----------------------------
 def parse_date_code(series):
-    s = series.astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
-    # Most files use Jul15 / Aug16 style
-    out = pd.to_datetime(s.str.upper(), format="%b%y", errors="coerce")
-    # If anything weird sneaks in, let pandas try too
+    s = series.astype(str).str.strip()
+    s = s.str.replace(r"\.0$", "", regex=True)
+
+    out = pd.Series(pd.NaT, index=s.index)
+
+    # 1) Jul15 / Aug21 etc.
+    out = out.fillna(pd.to_datetime(s.str.upper(), format="%b%y", errors="coerce"))
+
+    # 2) Numeric YYYYMM (e.g., 202007)
+    num = pd.to_numeric(s, errors="coerce")
+    idx = num.dropna().index
+    if len(idx) > 0:
+        yyyymm = num.loc[idx].astype(int).astype(str)
+        out.loc[idx] = out.loc[idx].fillna(pd.to_datetime(yyyymm, format="%Y%m", errors="coerce"))
+
+    # 3) Common string formats for newer years
+    for fmt in ["%Y-%m", "%Y-%m-%d", "%m/%Y", "%m/%d/%Y"]:
+        out = out.fillna(pd.to_datetime(s, format=fmt, errors="coerce"))
+
+    # 4) Final auto
     out = out.fillna(pd.to_datetime(s, errors="coerce"))
+
     return out
 
 # ----------------------------
@@ -170,7 +183,6 @@ def parse_date_code(series):
 def load_all(files):
     logs = []
     frames = []
-
     county_has_letter = re.compile(r"[A-Za-z]")
 
     for fname in files:
@@ -184,12 +196,11 @@ def load_all(files):
             logs.append(info)
             continue
 
-        # Require these
         if ("County_Name" not in df.columns) or ("Date_Code" not in df.columns):
             logs.append(fname + ": missing County_Name or Date_Code after read")
             continue
 
-        # Clean county
+        # County cleanup
         df["County_Name"] = df["County_Name"].astype(str).str.strip()
         df = df[df["County_Name"] != "Statewide"].copy()
         df = df.dropna(subset=["County_Name"]).copy()
@@ -202,14 +213,13 @@ def load_all(files):
         df["Date"] = parse_date_code(df["Date_Code"])
         df = df.dropna(subset=["Date"]).copy()
         if df.empty:
-            logs.append(fname + ": no parsable Date_Code values")
+            logs.append(fname + ": no parsable Date values")
             continue
 
-        # Map metric columns by position after the known “front” columns
+        # Metric mapping by position after known front fields
         known_front = [c for c in ["Date_Code", "Month", "Year", "County_Name", "County_Code", "SFY", "FFY"] if c in df.columns]
         rest_cols = [c for c in df.columns if c not in known_front]
 
-        # Rename rest columns to canonical metrics by position
         rename_metrics = {}
         for j, c in enumerate(rest_cols):
             if j < len(METRICS_IN_ORDER):
@@ -221,7 +231,6 @@ def load_all(files):
             logs.append(fname + ": no metric columns recognized after mapping")
             continue
 
-        # Numeric coercion
         for c in metric_cols:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
@@ -268,7 +277,7 @@ def load_all(files):
     return combined, logs
 
 # ----------------------------
-# UI: preflight
+# UI: preflight + load
 # ----------------------------
 st.header("Preflight: CSVs detected in /mnt/data")
 try:
@@ -301,7 +310,6 @@ max_date = data["Date"].max().date()
 
 st.sidebar.header("Filter Options")
 
-# default 2017-2019 if possible, else full range
 default_start = max(min_date, date(2017, 1, 1))
 default_end = min(max_date, date(2019, 12, 31))
 if default_end < default_start:
