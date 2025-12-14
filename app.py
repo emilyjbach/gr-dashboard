@@ -4,17 +4,16 @@ import altair as alt
 import os
 
 
-GR_FILE_NAMES = [
-    "15-16.csv",
-    "16-17.csv",
-    "17-18.csv",
-    "18-19.csv",
-    "19-20.csv",
-    "20-21.csv",
-    "21-22.csv",
-    "22-23.csv",
-    "23-24.csv",
-    "24-25.csv", 
+GR_FILE_NAMES = ["15-16.csv",
+"16-17.csv",
+"17-18.csv",
+"18-19.csv",
+"19-20.csv",
+"20-21.csv",
+"21-22.csv",
+"22-23.csv",
+"23-24.csv",
+"24-25.csv", 
 ]
 # config
 st.set_page_config(
