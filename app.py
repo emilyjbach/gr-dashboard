@@ -85,12 +85,11 @@ def prepare_and_combine_gr_data(file_names):
         35: "E. Net General Relief Expenditure",
     }
 
-    # Ensure metric_cols excludes the identifiers (first 4 values)
     metric_cols = list(column_index_map.values())[4:]
 
     for file_name in file_names:
         if not os.path.exists(file_name):
-            st.warning(f"File not found during combination: {file_name}. Please commit it to GitHub.")
+            st.warning(f"File not found during combination: {file_name}. Skipping.")
             continue
 
         try:
@@ -107,7 +106,7 @@ def prepare_and_combine_gr_data(file_names):
             df = df[df["County_Name"] != "Statewide"].copy()
             df = df.dropna(subset=['County_Name'])
 
-            # dates fixer - MOVED INSIDE THE LOOP
+            # dates fixer - CRITICALLY CORRECTLY INDENTED HERE
             df['Date'] = pd.to_datetime(df['Report_Month'], errors='coerce')
             df = df.dropna(subset=['Date'])
             
@@ -146,22 +145,6 @@ def prepare_and_combine_gr_data(file_names):
 
 # run data combination 
 data = prepare_and_combine_gr_data(GR_FILE_NAMES)
-
-# --- ADD THIS DEBUGGING BLOCK ---
-st.header("🔍 DEBUGGING DATA STATE")
-st.code(f"Is data empty? {data.empty}")
-
-if data.empty:
-    st.error("The combined DataFrame is empty. Check if all CSV files are present and readable.")
-    st.stop()
-else:
-    st.code(f"Total rows: {len(data)}")
-    st.code(f"Columns: {data.columns.tolist()}")
-    if 'County_Name' not in data.columns:
-        st.error("FATAL: The 'County_Name' column is missing! Check the column_index_map in the data prep function.")
-    else:
-        st.dataframe(data.head())
-# --- END DEBUGGING BLOCK ---
 
 if data.empty:
     st.stop()
