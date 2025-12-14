@@ -3,42 +3,45 @@ import pandas as pd
 import altair as alt
 import os
 import re
-from datetime import date 
+from datetime import date
 
 # --- Helper Function for Custom Metric Sorting ---
 def metric_sort_key(metric_name):
     """
     Custom key function to sort metrics in bureaucratic order (e.g., A. 1., A. 2., B. 6.)
     """
+    metric_name = str(metric_name)
     match = re.match(r'([A-E])[\.\s]*(\d+(\.\d+)?)?', metric_name)
-    
+
     if match:
         main_letter = match.group(1)
         main_number_str = match.group(2)
-        
+
         primary_sort = main_letter
         secondary_sort = 0
-        tertiary_sort = 0 
-        
+        tertiary_sort = 0
+
         if main_number_str:
             try:
                 secondary_sort = float(main_number_str)
             except ValueError:
-                secondary_sort = 999 
-        
-        if 'a.' in metric_name or 'a ' in metric_name:
+                secondary_sort = 999
+
+        lower = metric_name.lower()
+        if 'a.' in lower or ' a ' in lower:
             tertiary_sort = 1
-        elif 'b.' in metric_name or 'b ' in metric_name:
+        elif 'b.' in lower or ' b ' in lower:
             tertiary_sort = 2
-            
+
         return (primary_sort, secondary_sort, tertiary_sort)
-    
+
     if metric_name == "E. Net General Relief Expenditure":
         return ('E', 999, 0)
     if metric_name in ["Date_Code", "County_Name", "County_Code", "Report_Month"]:
-        return ('@', 0, 0) 
-    
-    return ('Z', 0, 0) 
+        return ('@', 0, 0)
+
+    return ('Z', 0, 0)
+
 
 # --- File List ---
 GR_FILE_NAMES = [
@@ -53,6 +56,7 @@ GR_FILE_NAMES = [
     "23-24.csv",
     "24-25.csv",
 ]
+
 # config
 st.set_page_config(
     page_title="General Relief (GR) Interactive Database",
@@ -66,15 +70,22 @@ def prepare_and_combine_gr_data(file_names):
     """
     Loads, cleans, and combines multiple GR data files into a single long-format DataFrame.
     """
-    st.info(f"Combining {len(file_names)} GR data files...")
-    all_data_frames = []
-    
-    DATE_FORMATS_TO_TRY = [
-        None,         # Pandas auto-detection (for standard YYYY-MM-DD or YYYY/MM/DD)
-        '%Y-%m',      # Format like 2015-07
-        '%m/%Y',      # Format like 07/2015
-    ]
 
+    # IMPORTANT: No st.* UI calls inside cached function.
+
+    all_data_frames = []
+
+    # Expanded formats to ensure 2016/2017 parses properly across files
+    DATE_FORMATS_TO_TRY = [
+        None,           # Pandas auto-detection (YYYY-MM-DD, YYYY/MM/DD, etc.)
+        '%Y-%m',        # 2015-07
+        '%Y-%m-%d',     # 2019-07-01
+        '%m/%Y',        # 07/2015
+        '%m/%d/%Y',     # 07/01/2019
+        '%b%y',         # Jun16
+        '%b-%y',        # Jun-16
+        '%b %y',        # Jun 16
+    ]
 
     # Mapping based on the visual inspection of the file headers (index 4)
     column_index_map = {
@@ -130,241 +141,55 @@ def prepare_and_combine_gr_data(file_names):
 
     metric_cols = list(column_index_map.values())[4:]
 
+    # County must contain at least one letter (prevents numeric garbage rows)
+    county_has_letter = re.compile(r"[A-Za-z]")
+
+    def resolve_path(name: str) -> str | None:
+        # Look in working dir first, then /mnt/data (common in Streamlit deployments)
+        if os.path.exists(name):
+            return name
+        alt_path = os.path.join("/mnt/data", name)
+        if os.path.exists(alt_path):
+            return alt_path
+        return None
+
     for file_name in file_names:
-        if not os.path.exists(file_name):
-            st.warning(f"File not found during combination: {file_name}. Skipping.")
+        path = resolve_path(file_name)
+        if not path:
+            # Can't use st.warning in cache; just skip.
             continue
 
         try:
-            df = pd.read_csv(file_name, header=4)
-            
-            # Rename columns
+            df = pd.read_csv(path, header=4)
+
+            # Rename columns by position
             df.columns = [column_index_map.get(i, col) for i, col in enumerate(df.columns)]
-            
+
             cols_to_keep = [name for name in column_index_map.values() if name in df.columns]
             df = df[cols_to_keep].copy()
 
             # data clean & prep
             df = df[df["County_Name"] != "Statewide"].copy()
             df = df.dropna(subset=['County_Name'])
-            
-            # 1. Ensure County_Name is always a string
-            df['County_Name'] = df['County_Name'].astype(str)
-            
-            # 2. Filter out rows where County_Name is purely numeric/looks like a number
+
+            # ensure County_Name is string
+            df['County_Name'] = df['County_Name'].astype(str).str.strip()
+
+            # drop numeric-looking counties AND anything without a letter
             numeric_mask = df['County_Name'].str.match(r'^\d+(\.\d+)?$')
             df = df[~numeric_mask].copy()
+            df = df[df['County_Name'].apply(lambda x: bool(county_has_letter.search(x)))].copy()
 
-            # dates fixer - CRITICAL CHANGE FOR OLDER FILES
-            df['Date'] = pd.NaT 
-            parsed = False
-            
-            # --- Attempt 1 (Targeting older files): Use Date_Code with aggressive normalization ---
-            if 'Date_Code' in df.columns:
-                # Strip, normalize case (e.g., 'jun16 ' -> 'Jun16'), and parse
-                date_col_date_code = df['Date_Code'].astype(str).str.strip().str.title() 
-                
-                df['Date'] = pd.to_datetime(date_col_date_code, format='%b%y', errors='coerce')
-                
-                if not df['Date'].isna().all():
-                    parsed = True
-                    # st.info(f"Successfully parsed dates in {file_name} using %b%y on Date_Code.")
+            # ---- DATE PARSING (key fix to reach 2017) ----
+            df['Date'] = pd.NaT
 
-
-            # --- Attempt 2 (Targeting newer files/fallbacks): Use Report_Month with formats/auto-detect ---
+            # Attempt A: parse Report_Month in multiple ways (covers many files)
             if 'Report_Month' in df.columns:
-                date_col_report_month = df['Report_Month'].astype(str).str.strip()
+                report_month_raw = df['Report_Month'].astype(str).str.strip()
 
-                # a. Aggressively clean numeric data (e.g., 201507.0 -> 201507)
-                unparsed_mask = df['Date'].isna()
-                date_col_cleaned_numeric = df.loc[unparsed_mask, 'Report_Month'].astype(str).str.strip()
+                # A1: numeric YYYYMM (e.g., 201607.0 -> 201607)
                 try:
-                    date_col_cleaned = date_col_cleaned_numeric.astype(float).dropna().astype(int).astype(str)
-                    df.loc[date_col_cleaned.index, 'Date'] = df.loc[date_col_cleaned.index, 'Date'].fillna(
-                        pd.to_datetime(date_col_cleaned, format='%Y%m', errors='coerce')
-                    )
-                    if not df['Date'].isna().all():
-                        parsed = True
-                except Exception:
-                    pass
-
-                # b. Try standard date formats on Report_Month (filling remaining NaT values)
-                for fmt in DATE_FORMATS_TO_TRY:
-                    df['Date'] = df['Date'].fillna(pd.to_datetime(date_col_report_month, format=fmt, errors='coerce'))
-                    if not df['Date'].isna().all():
-                        parsed = True
-                        break
-            
-            
-            # Final check and skip logic
-            if not parsed or df['Date'].isna().all():
-                 # We suppress the warning here to prevent the repeated messages in Streamlit UI if the file is indeed unparseable
-                 st.warning(f"All date rows dropped from {file_name} due to unparsable date format.")
-                 continue 
-            
-            df = df.dropna(subset=['Date'])
-            
-            # num fixer
-            for col in metric_cols:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
-
-            df = df.dropna(subset=metric_cols, how='all')
-
-            # melt!!!!
-            id_vars = ['Date', 'Report_Month', 'County_Name', 'County_Code']
-            existing_metric_cols = [col for col in metric_cols if col in df.columns]
-            
-            df_long = pd.melt(
-                df,
-                id_vars=id_vars,
-                value_vars=existing_metric_cols,
-                var_name='Metric',
-                value_name='Value'
-            )
-            all_data_frames.append(df_long)
-
-        except Exception as e:
-            st.error(f"Error processing {file_name}: {e}")
-
-    # comb dataframes
-    if all_data_frames:
-        df_combined = pd.concat(all_data_frames, ignore_index=True)
-        df_combined = df_combined.sort_values('Date').reset_index(drop=True)
-        df_combined = df_combined.drop_duplicates(subset=['Date', 'County_Name', 'Metric'], keep='first')
-        return df_combined
-    else:
-        st.error("No data could be processed and combined. Check file names and structure.")
-        return pd.DataFrame()
-
-# run data combination 
-data = prepare_and_combine_gr_data(GR_FILE_NAMES)
-
-# --- DEBUGGING BLOCK ---
-st.header("🔍 Data Loading Check")
-
-if not isinstance(data, pd.DataFrame):
-    st.error(f"FATAL ERROR: The data preparation function returned type: {type(data)}. Expected pandas.DataFrame.")
-    st.stop()
-
-if data.empty:
-    st.error("The combined DataFrame is EMPTY. This means none of the CSV files were found or processed successfully. Check file names and deployment integrity.")
-    st.stop()
-
-if 'County_Name' not in data.columns:
-    st.error(f"FATAL COLUMN ERROR: 'County_Name' column is missing! Found columns: {data.columns.tolist()}")
-    st.stop()
-    
-st.success(f"Data Loaded successfully: {len(data)} rows and {len(data.columns)} columns.")
-# --- END DEBUGGING BLOCK ---
-
-
-# get uq lists for selectors 
-all_counties = sorted(data['County_Name'].unique().tolist())
-metric_categories = data['Metric'].unique().tolist()
-
-# Use custom sort key for metrics
-metric_categories = sorted(metric_categories, key=metric_sort_key) 
-
-
-# sidebar filters
-st.sidebar.header("Filter Options")
-
-# Date Range Filter 
-min_date = data['Date'].min().to_pydatetime().date() if not data.empty else date(2015, 1, 1)
-max_date = data['Date'].max().to_pydatetime().date() if not data.empty else date(2025, 12, 31)
-
-# Default range focused on 2017-2019 for verification
-default_start = date(2017, 1, 1)
-default_end = date(2019, 12, 31)
-
-# Set the slider value within the actual min/max data range
-start_date = max(min_date, default_start)
-end_date = min(max_date, default_end)
-
-# If the loaded data is entirely outside the 2017-2019 window, adjust the default value
-if max_date < default_start or min_date > default_end:
-    start_date = min_date
-    end_date = max_date
-
-
-date_range = st.sidebar.slider(
-    "Select Date Range (Defaults to 2017-2019):",
-    min_value=min_date,
-    max_value=max_date,
-    value=(start_date, end_date),
-    format="YYYY/MM/DD"
-)
-
-# Apply Date Filter to the data
-data_dated = data[
-    (data['Date'].dt.date >= date_range[0]) & 
-    (data['Date'].dt.date <= date_range[1])
-].copy()
-
-
-# county
-selected_counties = st.sidebar.multiselect(
-    "Select County(s):",
-    options=all_counties,
-    default=[
-        "Alameda",
-        "Fresno",
-    ]
-)
-
-# metric
-st.sidebar.subheader("Select Metric(s) to Overlay")
-selected_metrics = st.sidebar.multiselect(
-    "Select Metric(s):",
-    options=metric_categories,
-    default=[
-        "B. 6. Total General Relief Cases", 
-    ]
-)
-
-# user prompts
-st.title("GR 237: General Relief")
-st.markdown("Use the sidebar filters to compare multiple counties and multiple metrics on the chart below.")
-
-# data filtering: APPLY FILTERS TO THE DATE-FILTERED DATA
-if not selected_counties or not selected_metrics:
-    st.info("Please select at least one county and one metric from the sidebar.")
-    st.stop()
-
-df_filtered = data_dated[
-    data_dated['County_Name'].isin(selected_counties) &
-    data_dated['Metric'].isin(selected_metrics)
-].copy()
-
-df_filtered = df_filtered.dropna(subset=['Value'])
-
-# viz
-if df_filtered.empty:
-    st.warning("No data found for the selected combination of counties, metrics, and date range.")
-else:
-    df_filtered['County_Metric'] = df_filtered['County_Name'] + ' - ' + df_filtered['Metric']
-    y_title = "Value (Cases, Persons, or Expenditures)"
-
-    base = alt.Chart(df_filtered).encode(
-        x=alt.X('Date', axis=alt.Axis(title='Report Month', format="%b %Y")),
-        y=alt.Y('Value', title=y_title, scale=alt.Scale(zero=False)),
-        color='County_Metric',
-        tooltip=['Report_Month', 'County_Name', 'Metric', alt.Tooltip('Value', format=',.0f')]
-    ).properties(
-        title=f"Interactive GR Database: {date_range[0].strftime('%Y/%m/%d')} to {date_range[1].strftime('%Y/%m/%d')}"
-    ).interactive() 
-
-    line_chart = base.mark_line(point=True)
-
-    st.altair_chart(line_chart, use_container_width=True)
-
-# --- UNDERLYING DATA ---
-st.markdown("---")
-st.subheader("📊 Underlying Filtered Data")
-
-df_display = df_filtered.drop(columns=['County_Metric']).copy()
-
-df_display.rename(columns={'Value': 'Value (Cases/Persons/Amount)'}, inplace=True)
-
-st.dataframe(df_display)
+                    cleaned_numeric = pd.to_numeric(report_month_raw, errors='coerce')
+                    idx = cleaned_numeric.dropna().index
+                    cleaned_yyyymm = cleaned_numeric.loc[idx].astype(int).astype(str)
+                    df.loc[idx, 'Date'] = pd.to_datetime(cleaned_yyyymm, form
