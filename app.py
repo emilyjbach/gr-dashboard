@@ -69,13 +69,13 @@ def prepare_and_combine_gr_data(file_names):
     st.info(f"Combining {len(file_names)} GR data files...")
     all_data_frames = []
     
-    # List of date formats to try, starting with the most likely
-    DATE_FORMATS = [
-        '%Y-%m-%d',  # e.g., 2020-01-01 (Standard ISO)
-        '%m/%d/%Y',  # e.g., 01/01/2020 (Common US)
-        '%m/%Y',     # e.g., 01/2020 (Month/Year)
-        '%Y%m',      # e.g., 202001 (No separators)
+    # List of date formats to try, based on common issues
+    DATE_FORMATS_TO_TRY = [
+        None,         # Pandas auto-detection (often works for newer files)
+        '%Y%m',       # Format like 201507 (Highly likely for older government data)
+        '%m/%d/%Y',   # Format like 07/01/2015
     ]
+
 
     # Mapping based on the visual inspection of the file headers (index 4)
     column_index_map = {
@@ -159,21 +159,28 @@ def prepare_and_combine_gr_data(file_names):
 
             # dates fixer - CRITICAL CHANGE HERE
             date_col = df['Report_Month']
-            df['Date'] = pd.to_datetime(date_col, errors='coerce')
+            df['Date'] = pd.NaT # Initialize with Not a Time
             
-            # If the initial parse failed (because the format is different), try others
-            if df['Date'].isna().all() and not date_col.empty:
-                st.info(f"Attempting alternative date formats for {file_name}...")
-                for fmt in DATE_FORMATS:
+            parsed = False
+            for fmt in DATE_FORMATS_TO_TRY:
+                try:
+                    # pd.to_datetime handles 'None' for automatic detection
                     df['Date'] = pd.to_datetime(date_col, format=fmt, errors='coerce')
+                    
+                    # Check if any dates were successfully parsed
                     if not df['Date'].isna().all():
-                        st.info(f"Successful format found: {fmt}")
+                        st.info(f"Successfully parsed dates in {file_name} using format: {fmt if fmt else 'Auto-Detect'}")
+                        parsed = True
                         break
+                except ValueError:
+                    # Ignore format specific errors and try the next one
+                    continue
             
-            df = df.dropna(subset=['Date'])
-            if df.empty:
+            if not parsed:
                  st.warning(f"All date rows dropped from {file_name} due to unparsable date format.")
                  continue # Skip this file if no dates could be parsed
+            
+            df = df.dropna(subset=['Date'])
             
             # num fixer
             for col in metric_cols:
