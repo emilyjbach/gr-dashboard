@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 import os
-import re # We need the regex module for custom sorting
+import re 
 
 # --- Helper Function for Custom Metric Sorting ---
 def metric_sort_key(metric_name):
@@ -11,42 +11,38 @@ def metric_sort_key(metric_name):
     It extracts the main section letter and any subsequent numbers.
     """
     # Regex to capture the main letter (e.g., 'A', 'B') and the primary number (e.g., '1', '6')
-    match = re.match(r'([A-E])\.\s*(\d+(\.\d+)?)?', metric_name)
+    # It attempts to be flexible with the separators (space or dot)
+    match = re.match(r'([A-E])[\.\s]*(\d+(\.\d+)?)?', metric_name)
     
     if match:
         main_letter = match.group(1) # 'A', 'B', 'C', etc.
         main_number_str = match.group(2) # '1', '6', '6a', etc.
         
-        # 1. Sort by the main letter (A, B, C, D, E)
         primary_sort = main_letter
-        
-        # 2. Sort by the numeric part, handling missing numbers and sub-letters (a, b)
         secondary_sort = 0
-        tertiary_sort = 0 # for sub-letters a, b
+        tertiary_sort = 0 
         
         if main_number_str:
-            # Convert primary number part to float for proper numeric sorting (1.0, 6.0)
             try:
                 secondary_sort = float(main_number_str)
             except ValueError:
-                secondary_sort = 999 # Place non-standard numbers at the end
+                secondary_sort = 999 
         
-        # 3. Handle sub-section letters like 'a' and 'b' (e.g., B. 6a vs B. 6b)
+        # Handle sub-section letters like 'a' and 'b' (e.g., B. 6a vs B. 6b)
         if 'a.' in metric_name or 'a ' in metric_name:
             tertiary_sort = 1
         elif 'b.' in metric_name or 'b ' in metric_name:
             tertiary_sort = 2
             
-        # The key is a tuple: (Letter, Primary Number, Sub-Letter)
         return (primary_sort, secondary_sort, tertiary_sort)
     
-    # Place identifiers and uncategorized metrics at the very beginning or end
+    # Handle specific exceptions and uncategorized items
+    if metric_name == "E. Net General Relief Expenditure":
+        return ('E', 999, 0) # Ensures E is the final letter section
     if metric_name in ["Date_Code", "County_Name", "County_Code", "Report_Month"]:
-        return ('@', 0, 0) # Sorts before A
-    if "Net General Relief Expenditure" in metric_name:
-        return ('F', 0, 0) # Place E at the very end
+        return ('@', 0, 0) 
     
-    return ('Z', 0, 0) # Fallback for anything that doesn't match the pattern
+    return ('Z', 0, 0) 
 
 # --- File List ---
 GR_FILE_NAMES = [
@@ -220,7 +216,7 @@ st.success(f"Data Loaded successfully: {len(data)} rows and {len(data.columns)} 
 all_counties = sorted(data['County_Name'].unique().tolist())
 metric_categories = data['Metric'].unique().tolist()
 
-# CRITICAL CHANGE: Use the custom sort key here
+# Use custom sort key for metrics
 metric_categories = sorted(metric_categories, key=metric_sort_key) 
 
 
@@ -282,3 +278,16 @@ else:
     line_chart = base.mark_line(point=True)
 
     st.altair_chart(line_chart, use_container_width=True)
+
+# --- NEW SECTION: UNDERLYING DATA ---
+st.markdown("---")
+st.subheader("📊 Underlying Filtered Data")
+
+# Drop the combined County_Metric column for cleaner display
+df_display = df_filtered.drop(columns=['County_Metric']).copy()
+
+# Rename columns for clarity in the raw table
+df_display.rename(columns={'Value': 'Value (Cases/Persons/Amount)'}, inplace=True)
+
+st.dataframe(df_display)
+# --- END NEW SECTION ---
