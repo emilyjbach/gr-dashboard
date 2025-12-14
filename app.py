@@ -68,6 +68,14 @@ def prepare_and_combine_gr_data(file_names):
     """
     st.info(f"Combining {len(file_names)} GR data files...")
     all_data_frames = []
+    
+    # List of date formats to try, starting with the most likely
+    DATE_FORMATS = [
+        '%Y-%m-%d',  # e.g., 2020-01-01 (Standard ISO)
+        '%m/%d/%Y',  # e.g., 01/01/2020 (Common US)
+        '%m/%Y',     # e.g., 01/2020 (Month/Year)
+        '%Y%m',      # e.g., 202001 (No separators)
+    ]
 
     # Mapping based on the visual inspection of the file headers (index 4)
     column_index_map = {
@@ -149,9 +157,23 @@ def prepare_and_combine_gr_data(file_names):
             numeric_mask = df['County_Name'].str.match(r'^\d+(\.\d+)?$')
             df = df[~numeric_mask].copy()
 
-            # dates fixer
-            df['Date'] = pd.to_datetime(df['Report_Month'], errors='coerce')
+            # dates fixer - CRITICAL CHANGE HERE
+            date_col = df['Report_Month']
+            df['Date'] = pd.to_datetime(date_col, errors='coerce')
+            
+            # If the initial parse failed (because the format is different), try others
+            if df['Date'].isna().all() and not date_col.empty:
+                st.info(f"Attempting alternative date formats for {file_name}...")
+                for fmt in DATE_FORMATS:
+                    df['Date'] = pd.to_datetime(date_col, format=fmt, errors='coerce')
+                    if not df['Date'].isna().all():
+                        st.info(f"Successful format found: {fmt}")
+                        break
+            
             df = df.dropna(subset=['Date'])
+            if df.empty:
+                 st.warning(f"All date rows dropped from {file_name} due to unparsable date format.")
+                 continue # Skip this file if no dates could be parsed
             
             # num fixer
             for col in metric_cols:
