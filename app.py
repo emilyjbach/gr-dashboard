@@ -14,35 +14,98 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- light styling (non-breaking) ---
+# --- poppy but professional styling (non-breaking) ---
 st.markdown(
     """
     <style>
-      /* Page width + typography */
-      .block-container { padding-top: 1.2rem; padding-bottom: 2.5rem; max-width: 1200px; }
-      h1 { letter-spacing: -0.02em; }
-      /* Sidebar spacing */
+      /* Layout + typography */
+      .block-container { padding-top: 1.1rem; padding-bottom: 2.6rem; max-width: 1220px; }
+      h1 { letter-spacing: -0.03em; margin-bottom: 0.15rem; }
+      [data-testid="stCaptionContainer"] { margin-top: 0.2rem; opacity: 0.85; }
+
+      /* Sidebar polish */
+      section[data-testid="stSidebar"] { border-right: 1px solid rgba(49,51,63,0.12); }
       section[data-testid="stSidebar"] .block-container { padding-top: 1.2rem; }
-      /* Subtle cards */
-      .gr-card {
-        border: 1px solid rgba(49, 51, 63, 0.15);
-        border-radius: 12px;
-        padding: 14px 16px;
-        background: rgba(255,255,255,0.6);
-        box-shadow: 0 1px 8px rgba(0,0,0,0.04);
+      section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 { letter-spacing: -0.02em; }
+
+      /* Fun top hero card */
+      .gr-hero {
+        position: relative;
+        overflow: hidden;
+        border-radius: 18px;
+        padding: 18px 18px 16px 18px;
+        border: 1px solid rgba(49, 51, 63, 0.14);
+        background:
+          radial-gradient(900px 180px at 10% 0%, rgba(151, 71, 255, 0.16), transparent 55%),
+          radial-gradient(900px 180px at 60% 10%, rgba(0, 209, 255, 0.14), transparent 55%),
+          radial-gradient(700px 200px at 90% 0%, rgba(255, 97, 165, 0.14), transparent 58%),
+          rgba(255,255,255,0.70);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.06);
       }
-      /* Small pill badges */
+      .gr-hero:after{
+        content:"";
+        position:absolute;
+        inset:-2px;
+        border-radius: 18px;
+        background: linear-gradient(120deg,
+          rgba(151,71,255,0.22),
+          rgba(0,209,255,0.18),
+          rgba(255,97,165,0.18));
+        filter: blur(22px);
+        opacity: 0.55;
+        z-index: 0;
+      }
+      .gr-hero * { position: relative; z-index: 1; }
+      .gr-hero-title {
+        font-size: 1.02rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        margin: 0 0 0.35rem 0;
+      }
+      .gr-hero-sub {
+        font-size: 0.92rem;
+        opacity: 0.80;
+        margin: 0;
+      }
+
+      /* Pills */
+      .pill-row { margin-top: 0.8rem; display: flex; flex-wrap: wrap; gap: 10px; }
       .pill {
-        display: inline-block;
-        padding: 3px 10px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
         border-radius: 999px;
-        border: 1px solid rgba(49, 51, 63, 0.18);
-        background: rgba(49, 51, 63, 0.04);
-        font-size: 0.85rem;
-        margin-right: 8px;
+        border: 1px solid rgba(49, 51, 63, 0.16);
+        background: rgba(255,255,255,0.72);
+        box-shadow: 0 1px 10px rgba(0,0,0,0.04);
+        font-size: 0.88rem;
       }
-      /* Divider */
-      hr { margin: 1.2rem 0; }
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 999px;
+        display:inline-block;
+        background: linear-gradient(135deg, rgba(151,71,255,0.95), rgba(0,209,255,0.9));
+      }
+      .dot2 { background: linear-gradient(135deg, rgba(255,97,165,0.95), rgba(255,184,107,0.9)); }
+      .dot3 { background: linear-gradient(135deg, rgba(0,209,255,0.9), rgba(57,255,20,0.55)); }
+
+      /* Dataframe + expander spacing */
+      [data-testid="stDataFrame"] { border-radius: 14px; overflow: hidden; }
+      details { border-radius: 14px; }
+
+      /* Make buttons/toggles feel a bit more modern */
+      .stButton button, .stDownloadButton button {
+        border-radius: 12px !important;
+        padding: 0.45rem 0.9rem !important;
+      }
+
+      /* Subheaders */
+      h2, h3 { letter-spacing: -0.02em; }
+
+      /* Dividers */
+      hr { margin: 1.35rem 0; opacity: 0.45; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -367,18 +430,23 @@ try:
     min_date = data["Date"].min().date()
     max_date = data["Date"].max().date()
 
-    # --- styled top stats (non-breaking) ---
+    # --- HERO + STATS (style only; doesn't touch logic) ---
     st.markdown(
         f"""
-        <div class="gr-card">
-          <span class="pill"><b>Rows</b>: {len(data):,}</span>
-          <span class="pill"><b>Date range</b>: {min_date} → {max_date}</span>
-          <span class="pill"><b>Files</b>: {len(GR_FILE_NAMES)}</span>
+        <div class="gr-hero">
+          <div class="gr-hero-title">Interactive GR Trends</div>
+          <p class="gr-hero-sub">Compare counties and metrics over time. Use the sidebar to explore patterns and outliers.</p>
+          <div class="pill-row">
+            <span class="pill"><span class="dot"></span><b>Rows</b>&nbsp;{len(data):,}</span>
+            <span class="pill"><span class="dot dot2"></span><b>Date range</b>&nbsp;{min_date} → {max_date}</span>
+            <span class="pill"><span class="dot dot3"></span><b>Files</b>&nbsp;{len(GR_FILE_NAMES)}</span>
+          </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    # --- end stats ---
+    st.markdown("<div style='height: 0.9rem;'></div>", unsafe_allow_html=True)
+    # --- end hero ---
 
     # sidebar filters
     all_counties = sorted(data["County_Name"].unique().tolist())
@@ -431,8 +499,11 @@ try:
 
     df["Series"] = df["County_Name"] + " - " + df["Metric"]
 
-    # subtle section header
-    st.markdown("<div style='height: 0.8rem;'></div>", unsafe_allow_html=True)
+    # section header with a tiny bit of flair
+    st.markdown(
+        "<h3 style='margin: 0.2rem 0 0.6rem 0;'>📈 Trend Chart</h3>",
+        unsafe_allow_html=True,
+    )
 
     chart = alt.Chart(df).mark_line(point=True).encode(
         x=alt.X("Date:T", axis=alt.Axis(title="Report Month", format="%b %Y")),
@@ -449,7 +520,8 @@ try:
     st.altair_chart(chart, use_container_width=True)
 
     st.markdown("---")
-    st.subheader("Underlying Data")
+    st.markdown("<h3 style='margin-bottom: 0.2rem;'>🧾 Underlying Data</h3>", unsafe_allow_html=True)
+    st.caption("Tip: click column headers to sort, or use the scrollbar to explore.")
     st.dataframe(df.drop(columns=["Series"], errors="ignore"))
 
 except Exception as e:
