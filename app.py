@@ -13,8 +13,7 @@ GR_FILE_NAMES = ["15-16.csv",
 "21-22.csv",
 "22-23.csv",
 "23-24.csv",
-"24-25.csv", 
-]
+"24-25.csv",]
 # config
 st.set_page_config(
     page_title="General Relief (GR) Interactive Database",
