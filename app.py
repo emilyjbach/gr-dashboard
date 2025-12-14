@@ -537,7 +537,6 @@ try:
 
     st.markdown("---")
     st.markdown("<h3 style='margin-bottom: 0.2rem;'>🧾 Underlying Data</h3>", unsafe_allow_html=True)
-    st.caption("Tip: click column headers to sort, or use the scrollbar to explore.")
     st.dataframe(df.drop(columns=["Series"], errors="ignore"))
 
 except Exception as e:
