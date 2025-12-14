@@ -5,7 +5,6 @@ import re
 from datetime import date
 from pathlib import Path
 
-# Altair will otherwise truncate large datasets
 alt.data_transformers.disable_max_rows()
 
 st.set_page_config(
@@ -15,11 +14,10 @@ st.set_page_config(
 )
 
 st.title("GR 237: General Relief")
-st.caption("Put the CSVs next to app.py or in a ./data folder in your repo. Use the sidebar to filter.")
+st.caption("Emily Bach Draft")
 
-# ----------------------------
-# Files (repo-relative)
-# ----------------------------
+# files
+
 GR_FILE_NAMES = [
     "15-16.csv",
     "16-17.csv",
@@ -33,10 +31,7 @@ GR_FILE_NAMES = [
     "24-25.csv",
 ]
 
-# ----------------------------
-# Canonical metric order (GR237)
-# IMPORTANT: these correspond to column numbers 1..29 (or "Cell 1" .. "Cell 29")
-# ----------------------------
+# metrics
 METRICS_IN_ORDER = [
     "A. Adjustment",
     "A. 1. Cases brought forward",
@@ -69,16 +64,12 @@ METRICS_IN_ORDER = [
     "E. Net General Relief Expenditure",
 ]
 
-# ----------------------------
-# Sidebar
-# ----------------------------
+# sidebar
 with st.sidebar:
     st.header("Filter Options")
     show_debug = st.checkbox("Show debug log", value=False)
 
-# ----------------------------
-# Helpers
-# ----------------------------
+# helpers
 def metric_sort_key(metric_name: str):
     name = str(metric_name)
     m = re.match(r"^\s*([A-E])", name)
@@ -113,7 +104,7 @@ def norm_col(x) -> str:
     return str(x).strip().lstrip("\ufeff").strip()
 
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    # Drop blank/unnamed spacer columns that cause off-by-1 shifts
+    # drop spacer cols
     drop_cols = []
     for c in df.columns:
         s = norm_col(c)
@@ -124,7 +115,7 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     if drop_cols:
         df = df.drop(columns=drop_cols, errors="ignore")
 
-    # Standardize key column names
+    # standardize col nams
     rename_map = {}
     for c in df.columns:
         low = norm_col(c).lower()
@@ -153,38 +144,38 @@ def parse_date_series(s: pd.Series) -> pd.Series:
 
     out = pd.Series(pd.NaT, index=s.index)
 
-    # Jul15 / Aug21 style
+    # mon12
     out = out.fillna(pd.to_datetime(s.str.upper(), format="%b%y", errors="coerce"))
 
-    # Numeric YYYYMM
+    # 202512
     num = pd.to_numeric(s, errors="coerce")
     idx = num.dropna().index
     if len(idx) > 0:
         yyyymm = num.loc[idx].astype(int).astype(str)
         out.loc[idx] = out.loc[idx].fillna(pd.to_datetime(yyyymm, format="%Y%m", errors="coerce"))
 
-    # Other common formats
+    # other randos
     for fmt in ("%Y-%m", "%Y-%m-%d", "%m/%Y", "%m/%d/%Y", "%b %Y", "%B %Y"):
         out = out.fillna(pd.to_datetime(s, format=fmt, errors="coerce"))
 
-    # Final auto
+    # fin
     out = out.fillna(pd.to_datetime(s, errors="coerce"))
     return out
 
 def build_date(df: pd.DataFrame) -> pd.Series:
-    # Prefer Date_Code (Jul20, etc.)
+    # pref dat 
     if "Date_Code" in df.columns:
         d = parse_date_series(df["Date_Code"])
         if d.notna().any():
             return d
 
-    # Else Report_Month (Jul 2020, etc.)
+    # else
     if "Report_Month" in df.columns:
         d = parse_date_series(df["Report_Month"])
         if d.notna().any():
             return d
 
-    # Else Month + Year
+    # else
     if "Month" in df.columns and "Year" in df.columns:
         month = pd.to_numeric(df["Month"], errors="coerce")
         year = pd.to_numeric(df["Year"], errors="coerce")
@@ -199,8 +190,6 @@ def build_date(df: pd.DataFrame) -> pd.Series:
     return pd.Series(pd.NaT, index=df.index)
 
 def read_gr_csv(path: Path, logs: list[str]) -> pd.DataFrame | None:  # noqa: E999
-    # These GR237 exports consistently have the real header row at line index 4.
-    # If that ever changes, we fall back to scanning a range.
     try:
         df = pd.read_csv(path, header=4, engine="python")
         df = normalize_columns(df)
@@ -210,7 +199,6 @@ def read_gr_csv(path: Path, logs: list[str]) -> pd.DataFrame | None:  # noqa: E9
     except Exception as e:
         logs.append(f"{path.name}: header=4 failed ({e})")
 
-    # Fallback: scan headers 0..50 and pick the first that yields County + Date-ish columns
     for h in range(0, 51):
         try:
             df = pd.read_csv(path, header=h, engine="python")
@@ -227,11 +215,7 @@ def read_gr_csv(path: Path, logs: list[str]) -> pd.DataFrame | None:  # noqa: E9
 
 def map_metric_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Fix that makes A.1 correct for 2020+:
-    map column headers that look like:
-      - "1", "2", ... "29"
-      - "Cell 1", "Cell 2", ... "Cell 29"
-    directly to METRICS_IN_ORDER by extracted number.
+A.1. fix
     """
     rename = {}
     for c in df.columns:
@@ -246,9 +230,6 @@ def map_metric_columns(df: pd.DataFrame) -> pd.DataFrame:
         df = df.rename(columns=rename)
     return df
 
-# ----------------------------
-# Load + combine (cached)
-# ----------------------------
 @st.cache_data
 def load_all(files: list[str]):
     logs: list[str] = []
@@ -265,12 +246,12 @@ def load_all(files: list[str]):
         if df is None or df.empty:
             continue
 
-        # Required
+        # req!!!!!
         if "County_Name" not in df.columns:
             logs.append(f"{fname}: missing County_Name after read")
             continue
 
-        # Clean county
+        # clean county
         df["County_Name"] = df["County_Name"].astype(str).str.strip()
         df = df[df["County_Name"] != "Statewide"].copy()
         df = df.dropna(subset=["County_Name"]).copy()
@@ -279,18 +260,18 @@ def load_all(files: list[str]):
             logs.append(f"{fname}: empty after county filtering")
             continue
 
-        # Build Date
+        # date builder
         df["Date"] = build_date(df)
         df = df.dropna(subset=["Date"]).copy()
         if df.empty:
             logs.append(f"{fname}: no parsable dates")
             continue
 
-        # If no Report_Month, synthesize it for tooltip consistency
+        # good code! go good code! 
         if "Report_Month" not in df.columns:
             df["Report_Month"] = df["Date"].dt.strftime("%b %Y")
 
-        # MAP METRICS CORRECTLY (this is the A.1 fix)
+        # a.1. fix r2
         df = map_metric_columns(df)
 
         metric_cols = [m for m in METRICS_IN_ORDER if m in df.columns]
@@ -298,7 +279,7 @@ def load_all(files: list[str]):
             logs.append(f"{fname}: no metric columns recognized (expected 1..29 or Cell 1..29)")
             continue
 
-        # Numeric coercion
+        # num coerc
         for c in metric_cols:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
@@ -307,7 +288,7 @@ def load_all(files: list[str]):
             logs.append(f"{fname}: all metric values empty after numeric coercion")
             continue
 
-        # Long format
+        # long
         id_vars = ["Date", "Report_Month", "County_Name"]
         if "County_Code" in df.columns:
             id_vars.append("County_Code")
@@ -333,9 +314,7 @@ def load_all(files: list[str]):
     combined = combined.drop_duplicates(subset=["Date", "County_Name", "Metric"], keep="first")
     return combined, logs
 
-# ----------------------------
-# Main (never blank-page)
-# ----------------------------
+
 try:
     data, logs = load_all(GR_FILE_NAMES)
 
@@ -353,7 +332,7 @@ try:
     max_date = data["Date"].max().date()
     st.write(f"**Loaded:** {len(data):,} rows • **Date range:** {min_date} → {max_date}")
 
-    # Sidebar filters
+    # sidebar filters
     all_counties = sorted(data["County_Name"].unique().tolist())
     metrics = sorted(data["Metric"].unique().tolist(), key=metric_sort_key)
 
@@ -383,7 +362,7 @@ try:
             else (["B. 6. Total General Relief Cases"] if "B. 6. Total General Relief Cases" in metrics else metrics[:1]),
         )
 
-    # Filtered view
+    # filtered view
     data_dated = data[
         (data["Date"].dt.date >= date_range[0]) &
         (data["Date"].dt.date <= date_range[1])
