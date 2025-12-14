@@ -14,6 +14,41 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# --- light styling (non-breaking) ---
+st.markdown(
+    """
+    <style>
+      /* Page width + typography */
+      .block-container { padding-top: 1.2rem; padding-bottom: 2.5rem; max-width: 1200px; }
+      h1 { letter-spacing: -0.02em; }
+      /* Sidebar spacing */
+      section[data-testid="stSidebar"] .block-container { padding-top: 1.2rem; }
+      /* Subtle cards */
+      .gr-card {
+        border: 1px solid rgba(49, 51, 63, 0.15);
+        border-radius: 12px;
+        padding: 14px 16px;
+        background: rgba(255,255,255,0.6);
+        box-shadow: 0 1px 8px rgba(0,0,0,0.04);
+      }
+      /* Small pill badges */
+      .pill {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(49, 51, 63, 0.18);
+        background: rgba(49, 51, 63, 0.04);
+        font-size: 0.85rem;
+        margin-right: 8px;
+      }
+      /* Divider */
+      hr { margin: 1.2rem 0; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+# --- end styling ---
+
 st.title("GR 237: General Relief")
 st.caption("Emily Bach to do: stylize, update plan, res a.1. filepath for 2020+ in some counties, res * data q")
 
@@ -331,7 +366,19 @@ try:
 
     min_date = data["Date"].min().date()
     max_date = data["Date"].max().date()
-    st.write(f"**Loaded:** {len(data):,} rows • **Date range:** {min_date} → {max_date}")
+
+    # --- styled top stats (non-breaking) ---
+    st.markdown(
+        f"""
+        <div class="gr-card">
+          <span class="pill"><b>Rows</b>: {len(data):,}</span>
+          <span class="pill"><b>Date range</b>: {min_date} → {max_date}</span>
+          <span class="pill"><b>Files</b>: {len(GR_FILE_NAMES)}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    # --- end stats ---
 
     # sidebar filters
     all_counties = sorted(data["County_Name"].unique().tolist())
@@ -383,6 +430,9 @@ try:
         st.stop()
 
     df["Series"] = df["County_Name"] + " - " + df["Metric"]
+
+    # subtle section header
+    st.markdown("<div style='height: 0.8rem;'></div>", unsafe_allow_html=True)
 
     chart = alt.Chart(df).mark_line(point=True).encode(
         x=alt.X("Date:T", axis=alt.Axis(title="Report Month", format="%b %Y")),
