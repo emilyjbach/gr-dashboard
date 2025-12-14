@@ -507,7 +507,7 @@ try:
 
     st.markdown(
         f"""
-        <h3 style='margin: 0.2rem 0 0.25rem 0;'>📈 Trends: {counties_label}</h3>
+        <h3 style='margin: 0.2rem 0 0.25rem 0;'>Trends in: {counties_label}</h3>
         <div style="opacity:0.82; font-size:0.95rem; margin-bottom:0.6rem;">
             <b>Metrics:</b> {metrics_label} &nbsp; • &nbsp;
             <b>Period:</b> {start_label} → {end_label}
