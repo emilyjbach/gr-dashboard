@@ -10,6 +10,7 @@ def metric_sort_key(metric_name):
     """
     Custom key function to sort metrics in bureaucratic order (e.g., A. 1., A. 2., B. 6.)
     """
+    # Regex to capture the main letter (e.g., 'A', 'B') and the primary number (e.g., '1', '6')
     match = re.match(r'([A-E])[\.\s]*(\d+(\.\d+)?)?', metric_name)
     
     if match:
@@ -26,6 +27,7 @@ def metric_sort_key(metric_name):
             except ValueError:
                 secondary_sort = 999 
         
+        # Handle sub-section letters like 'a' and 'b'
         if 'a.' in metric_name or 'a ' in metric_name:
             tertiary_sort = 1
         elif 'b.' in metric_name or 'b ' in metric_name:
@@ -69,15 +71,11 @@ def prepare_and_combine_gr_data(file_names):
     st.info(f"Combining {len(file_names)} GR data files...")
     all_data_frames = []
     
-    # List of date formats to try, based on common issues
+    # Common Year-Month formats to try
     DATE_FORMATS_TO_TRY = [
-        None,         # 1. Pandas auto-detection (often works for newer files)
-        '%Y%m',       # 2. Format like 201507
-        '%Y-%m',      # 3. Format like 2015-07 (NEW)
-        '%Y/%m',      # 4. Format like 2015/07 (NEW)
-        '%m/%Y',      # 5. Format like 07/2015
-        '%m/%d/%Y',   # 6. Format like 07/01/2015
-        '%m-%d-%Y',   # 7. Format like 07-01-2015 (NEW)
+        None,         # Pandas auto-detection (for standard YYYY-MM-DD or YYYY/MM/DD)
+        '%Y-%m',      # Format like 2015-07
+        '%m/%Y',      # Format like 07/2015
     ]
 
 
@@ -146,7 +144,6 @@ def prepare_and_combine_gr_data(file_names):
             # Rename columns
             df.columns = [column_index_map.get(i, col) for i, col in enumerate(df.columns)]
             
-            
             cols_to_keep = [name for name in column_index_map.values() if name in df.columns]
             df = df[cols_to_keep].copy()
 
@@ -161,31 +158,44 @@ def prepare_and_combine_gr_data(file_names):
             numeric_mask = df['County_Name'].str.match(r'^\d+(\.\d+)?$')
             df = df[~numeric_mask].copy()
 
-            # dates fixer - CRITICAL CHANGE HERE
-            date_col = df['Report_Month']
-            df['Date'] = pd.NaT # Initialize with Not a Time
-            
+            # dates fixer - CRITICAL FIX FOR OLD DATA
+            df['Date'] = pd.NaT 
             parsed = False
-            for fmt in DATE_FORMATS_TO_TRY:
-                try:
-                    # pd.to_datetime handles 'None' for automatic detection
-                    # Convert to string first to handle potential numeric Excel dates read as float
-                    temp_series = date_col.astype(str) 
-                    df['Date'] = pd.to_datetime(temp_series, format=fmt, errors='coerce')
-                    
-                    # Check if any dates were successfully parsed
-                    if not df['Date'].isna().all():
-                        st.info(f"Successfully parsed dates in {file_name} using format: {fmt if fmt else 'Auto-Detect'}")
-                        parsed = True
-                        break
-                except ValueError:
-                    # Ignore format specific errors and try the next one
-                    continue
             
-            # This handles the scenario where the file was read but the dates failed to parse
-            if not parsed:
+            # --- Attempt 1: Parse Report_Month (Index 6) ---
+            date_col_report_month = df['Report_Month'].astype(str)
+            
+            # 1a. Aggressively clean numeric data (e.g., 201507.0 -> 201507) and try YYYYMM format
+            try:
+                date_col_cleaned = date_col_report_month.astype(float).dropna().astype(int).astype(str)
+                # Only update 'Date' for rows where cleaning was successful
+                df.loc[date_col_cleaned.index, 'Date'] = pd.to_datetime(date_col_cleaned, format='%Y%m', errors='coerce')
+                if not df['Date'].isna().all():
+                     parsed = True
+                     # No break here, as we might need to overwrite NaTs later, but proceed to 1b.
+            except Exception:
+                pass 
+            
+            # 1b. Try common formats on Report_Month (for newer files or specific formats)
+            for fmt in DATE_FORMATS_TO_TRY:
+                df['Date'] = df['Date'].fillna(pd.to_datetime(date_col_report_month, format=fmt, errors='coerce'))
+                if not df['Date'].isna().all():
+                    parsed = True
+
+            # --- Attempt 2: If Report_Month failed to parse everything, try Date_Code (Index 0) with '%b%y' format ---
+            if 'Date_Code' in df.columns:
+                date_col_date_code = df['Date_Code'].astype(str)
+                # Parse format like 'Jun16'
+                # Fill any remaining NaT values in 'Date' column
+                df['Date'] = df['Date'].fillna(pd.to_datetime(date_col_date_code, format='%b%y', errors='coerce'))
+                if not df['Date'].isna().all():
+                    parsed = True
+            
+            
+            # Final check and skip logic
+            if not parsed or df['Date'].isna().all():
                  st.warning(f"All date rows dropped from {file_name} due to unparsable date format.")
-                 continue # Skip this file if no dates could be parsed
+                 continue 
             
             df = df.dropna(subset=['Date'])
             
