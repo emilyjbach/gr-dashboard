@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# styling 
+# styling
 st.markdown(
     """
     <style>
@@ -499,11 +499,25 @@ try:
 
     df["Series"] = df["County_Name"] + " - " + df["Metric"]
 
-    # section header with a tiny bit of flair
+    # --- AUTO-UPDATING TITLE (counties + metrics + date range) ---
+    counties_label = ", ".join(selected_counties[:4]) + ("…" if len(selected_counties) > 4 else "")
+    metrics_label = ", ".join(selected_metrics[:2]) + ("…" if len(selected_metrics) > 2 else "")
+    start_label = date_range[0].strftime("%Y/%m/%d")
+    end_label = date_range[1].strftime("%Y/%m/%d")
+
     st.markdown(
-        "<h3 style='margin: 0.2rem 0 0.6rem 0;'>📈 Trend Chart</h3>",
+        f"""
+        <h3 style='margin: 0.2rem 0 0.25rem 0;'>📈 Trends: {counties_label}</h3>
+        <div style="opacity:0.82; font-size:0.95rem; margin-bottom:0.6rem;">
+            <b>Metrics:</b> {metrics_label} &nbsp; • &nbsp;
+            <b>Period:</b> {start_label} → {end_label}
+        </div>
+        """,
         unsafe_allow_html=True,
     )
+    # --- end auto title ---
+
+    chart_title = f"Trends: {counties_label} | {metrics_label} | {start_label} → {end_label}"
 
     chart = alt.Chart(df).mark_line(point=True).encode(
         x=alt.X("Date:T", axis=alt.Axis(title="Report Month", format="%b %Y")),
@@ -515,6 +529,8 @@ try:
             alt.Tooltip("Metric:N"),
             alt.Tooltip("Value:Q", format=",.0f"),
         ],
+    ).properties(
+        title=chart_title
     ).interactive()
 
     st.altair_chart(chart, use_container_width=True)
