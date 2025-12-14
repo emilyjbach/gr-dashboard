@@ -106,7 +106,7 @@ def prepare_and_combine_gr_data(file_names):
             df = df[df["County_Name"] != "Statewide"].copy()
             df = df.dropna(subset=['County_Name'])
 
-            # dates fixer - CRITICALLY CORRECTLY INDENTED HERE
+            # dates fixer
             df['Date'] = pd.to_datetime(df['Report_Month'], errors='coerce')
             df = df.dropna(subset=['Date'])
             
@@ -146,8 +146,24 @@ def prepare_and_combine_gr_data(file_names):
 # run data combination 
 data = prepare_and_combine_gr_data(GR_FILE_NAMES)
 
-if data.empty:
+# --- START NEW DEBUGGING BLOCK (Helps diagnose the recurring TypeError) ---
+st.header("🔍 Data Loading Check")
+
+if not isinstance(data, pd.DataFrame):
+    st.error(f"FATAL ERROR: The data preparation function returned type: {type(data)}. Expected pandas.DataFrame.")
     st.stop()
+
+if data.empty:
+    st.error("The combined DataFrame is EMPTY. This means none of the CSV files were found or processed successfully. Check file names and deployment integrity.")
+    st.stop()
+
+if 'County_Name' not in data.columns:
+    st.error(f"FATAL COLUMN ERROR: 'County_Name' column is missing! Found columns: {data.columns.tolist()}")
+    st.stop()
+    
+st.success(f"Data Loaded Successfully: {len(data)} rows and {len(data.columns)} columns.")
+# --- END NEW DEBUGGING BLOCK ---
+
 
 # get uq lists for selectors 
 all_counties = sorted(data['County_Name'].unique().tolist())
