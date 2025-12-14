@@ -2,8 +2,9 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 import os
+import re # We need the regex module for advanced filtering
 
-
+# --- File List ---
 GR_FILE_NAMES = [
     "15-16.csv",
     "16-17.csv",
@@ -23,12 +24,11 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# data prep (moved inside system)
+# --- Data Preparation Function ---
 @st.cache_data
 def prepare_and_combine_gr_data(file_names):
     """
     Loads, cleans, and combines multiple GR data files into a single long-format DataFrame.
-    This heavy operation is run only once thanks to st.cache_data.
     """
     st.info(f"Combining {len(file_names)} GR data files...")
     all_data_frames = []
@@ -106,8 +106,12 @@ def prepare_and_combine_gr_data(file_names):
             df = df[df["County_Name"] != "Statewide"].copy()
             df = df.dropna(subset=['County_Name'])
             
-            # CRITICAL FIX: Ensure County_Name is always a string to prevent TypeError on sorted()
+            # 1. Ensure County_Name is always a string (fixes TypeError on sorted())
             df['County_Name'] = df['County_Name'].astype(str)
+            
+            # 2. CRITICAL FIX: Filter out rows where County_Name is purely numeric/looks like a number (e.g., "5.0", "True", etc.)
+            numeric_mask = df['County_Name'].str.match(r'^\d+(\.\d+)?$')
+            df = df[~numeric_mask].copy()
 
             # dates fixer
             df['Date'] = pd.to_datetime(df['Report_Month'], errors='coerce')
@@ -149,7 +153,7 @@ def prepare_and_combine_gr_data(file_names):
 # run data combination 
 data = prepare_and_combine_gr_data(GR_FILE_NAMES)
 
-# --- DEBUGGING BLOCK (Now helps confirm the fix worked) ---
+# --- DEBUGGING BLOCK ---
 st.header("🔍 Data Loading Check")
 
 if not isinstance(data, pd.DataFrame):
@@ -164,12 +168,11 @@ if 'County_Name' not in data.columns:
     st.error(f"FATAL COLUMN ERROR: 'County_Name' column is missing! Found columns: {data.columns.tolist()}")
     st.stop()
     
-st.success(f"Data Loaded Successfully: {len(data)} rows and {len(data.columns)} columns.")
+st.success(f"Data Loaded successfully: {len(data)} rows and {len(data.columns)} columns.")
 # --- END DEBUGGING BLOCK ---
 
 
 # get uq lists for selectors 
-# This line should now succeed due to the .astype(str) fix
 all_counties = sorted(data['County_Name'].unique().tolist())
 metric_categories = data['Metric'].unique().tolist()
 
