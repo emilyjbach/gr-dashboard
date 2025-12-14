@@ -5,7 +5,7 @@ import os
 import re
 from datetime import date
 
-# IMPORTANT: prevent Altair from silently truncating >5000 rows
+# Altair silently truncates >5000 rows unless you disable this
 alt.data_transformers.disable_max_rows()
 
 st.set_page_config(
@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # ----------------------------
-# Metric sorting
+# Metric sorting (safe)
 # ----------------------------
 def metric_sort_key(metric_name):
     name = str(metric_name)
@@ -32,7 +32,7 @@ def metric_sort_key(metric_name):
     return (letter, number, sub)
 
 # ----------------------------
-# Files expected in /mnt/data
+# Files expected
 # ----------------------------
 GR_FILE_NAMES = [
     "15-16.csv",
@@ -48,16 +48,19 @@ GR_FILE_NAMES = [
 ]
 
 def resolve_path(fname):
+    # Streamlit Cloud / this sandbox: uploaded files are in /mnt/data
     p1 = os.path.join("/mnt/data", fname)
     if os.path.exists(p1):
         return p1
+    # Fallback: local working dir
     if os.path.exists(fname):
         return fname
     return None
 
 # ----------------------------
-# Canonical metric order
-# (GR 237 layout: metrics start after first 7 fields)
+# Canonical metric order for GR237
+# In these exports, after FFY the remaining columns are numbered 1..N
+# We map them by position to these names.
 # ----------------------------
 METRICS_IN_ORDER = [
     "A. Adjustment",
@@ -97,137 +100,83 @@ METRICS_IN_ORDER = [
     "E. Net General Relief Expenditure",
 ]
 
-MONTHCODE_RE = re.compile(r"^[A-Za-z]{3}\d{2}$") # Jul15
-
-def parse_monthcode_series(s):
-    s = s.astype(str).str.strip()
-    
-    # Primary parse: handle 'Jul15' style codes using title case for forgiveness
-    out = pd.to_datetime(s.str.title(), format="%b%y", errors="coerce") 
-    
-    # Fallback 1: let pandas auto-detect other formats (like full dates, or month/year)
-    out = out.fillna(pd.to_datetime(s, errors="coerce")) 
-    
-    # Fallback 2: Aggressive numeric YYYYMM parse for remaining NaT (e.g., 201507.0)
-    unparsed_mask = out.isna()
-    if unparsed_mask.any():
-        # Isolate the unparsed strings and clean non-digits
-        numeric_series = s[unparsed_mask].str.replace(r"[^0-9]", "", regex=True)
-        
-        # Only try to parse if it's 6 digits long (YYYYMM)
-        valid_numeric_mask = numeric_series.str.len() == 6
-        
-        out.loc[unparsed_mask] = out.loc[unparsed_mask].fillna(
-            pd.to_datetime(numeric_series[valid_numeric_mask], format='%Y%m', errors='coerce')
-        )
-
-    return out
-
-def find_header_or_data_start(path):
-    """
-    Detect where the actual data starts (the row with 'Jul15' or similar)
-    or the row with explicit column names.
-    """
+# ----------------------------
+# Robust reader for these "accessible table" CSV exports
+# Key fix vs your previous versions:
+# - Do NOT assume header=4.
+# - These files contain multiline quoted headers.
+# - The reliable way is: read a small probe with engine="python", find the row where col0="Date",
+#   then read the full file using that row as header.
+# ----------------------------
+def detect_header_row_by_parsing(path, max_probe_rows=120):
     try:
-        with open(path, "r", errors="ignore") as f:
-            for i in range(0, 120): # Check first 120 rows
-                line = f.readline()
-                if not line:
-                    break
-                s = line.strip()
-                low = s.lower()
-                
-                # 1. Check for explicit header row
-                if low.startswith("date,month,year,county"):
-                    return ("header", i)
-                
-                # 2. Check for data row (most common)
-                # CRITICAL FIX: Robustly check the first column for the month code pattern
-                parts = s.split(',', 1)
-                if parts:
-                    first_col_content = parts[0].strip().strip('"') # Strip quotes and whitespace
-                    if MONTHCODE_RE.match(first_col_content):
-                        return ("data", i)
-
+        probe = pd.read_csv(path, header=None, engine="python", nrows=max_probe_rows)
     except Exception:
-        pass
-    return (None, None)
+        return None
+
+    def norm(x):
+        if pd.isna(x):
+            return ""
+        return str(x).strip().lstrip("\ufeff").strip().lower()
+
+    for i in range(len(probe)):
+        c0 = norm(probe.iat[i, 0]) if probe.shape[1] > 0 else ""
+        c1 = norm(probe.iat[i, 1]) if probe.shape[1] > 1 else ""
+        c2 = norm(probe.iat[i, 2]) if probe.shape[1] > 2 else ""
+        c3 = norm(probe.iat[i, 3]) if probe.shape[1] > 3 else ""
+        # Typical header row: Date, Month, Year, County Name, County Code, SFY, FFY, 1, 2, 3...
+        if c0 == "date" and c1 == "month" and c2 == "year" and "county" in c3:
+            return i
+
+    return None
 
 def read_gr_file(path):
-    mode, idx = find_header_or_data_start(path)
     base = os.path.basename(path)
-    
-    ID_COLUMNS = ["Date_Code", "Month", "Year", "County_Name", "County_Code", "SFY", "FFY"]
+    header_row = detect_header_row_by_parsing(path)
 
-    if mode == "header":
-        df = pd.read_csv(path, header=idx)
+    if header_row is None:
+        return None, base + ": could not find header row (Date/Month/Year...) in probe"
 
-        # Normalize column names that commonly appear
-        rename_map = {
-            "Date": "Date_Code",
-            "County": "County_Name",
-            "County Name": "County_Name",
-            "County name": "County_Name",
-            "County Code": "County_Code",
-            "County code": "County_Code",
-            "Month": "Month",
-            "Year": "Year",
-            "SFY": "SFY",
-            "FFY": "FFY",
-        }
-        df = df.rename(columns=rename_map)
+    try:
+        df = pd.read_csv(path, header=header_row, engine="python")
+    except Exception as e:
+        return None, base + ": failed reading with detected header row " + str(header_row) + " (" + str(e) + ")"
 
-        known_id_cols = [c for c in ID_COLUMNS if c in df.columns]
-        rest = [c for c in df.columns if c not in known_id_cols]
+    # Normalize expected key columns
+    rename_map = {
+        "Date": "Date_Code",
+        "County Name": "County_Name",
+        "County name": "County_Name",
+        "County": "County_Name",
+        "County Code": "County_Code",
+        "County code": "County_Code",
+    }
+    df = df.rename(columns=rename_map)
 
-        # Rename remaining columns by position into METRICS_IN_ORDER
-        new_names = {}
-        for j, c in enumerate(rest):
-            if j < len(METRICS_IN_ORDER):
-                new_names[c] = METRICS_IN_ORDER[j]
-            else:
-                new_names[c] = f"X{len(known_id_cols) + j}"
-        df = df.rename(columns=new_names)
+    return df, base + ": read with header row " + str(header_row)
 
-        return df, base + ": header row " + str(idx)
-
-    if mode == "data":
-        df = pd.read_csv(path, header=None, skiprows=idx)
-        ncols = df.shape[1]
-
-        colnames = []
-        for k in range(ncols):
-            if k < len(ID_COLUMNS):
-                colnames.append(ID_COLUMNS[k])
-            else:
-                pos = k - len(ID_COLUMNS)
-                if pos < len(METRICS_IN_ORDER):
-                    colnames.append(METRICS_IN_ORDER[pos])
-                else:
-                    colnames.append("X" + str(k))
-        
-        # Ensure we don't try to assign more names than columns exist
-        if len(colnames) > ncols:
-            colnames = colnames[:ncols]
-
-        df.columns = colnames
-        return df, base + ": data start " + str(idx)
-
-    return None, base + ": could not detect header/data start"
+def parse_date_code(series):
+    s = series.astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+    # Most files use Jul15 / Aug16 style
+    out = pd.to_datetime(s.str.upper(), format="%b%y", errors="coerce")
+    # If anything weird sneaks in, let pandas try too
+    out = out.fillna(pd.to_datetime(s, errors="coerce"))
+    return out
 
 # ----------------------------
-# Cached load/combine
+# Cached combine
 # ----------------------------
 @st.cache_data
 def load_all(files):
     logs = []
-    frames_long = []
+    frames = []
+
     county_has_letter = re.compile(r"[A-Za-z]")
 
     for fname in files:
         path = resolve_path(fname)
         if not path:
-            logs.append(fname + ": missing")
+            logs.append(fname + ": missing file")
             continue
 
         df, info = read_gr_file(path)
@@ -235,71 +184,97 @@ def load_all(files):
             logs.append(info)
             continue
 
-        if "County_Name" not in df.columns or "Date_Code" not in df.columns:
-            logs.append(os.path.basename(path) + ": missing County_Name or Date_Code after read")
+        # Require these
+        if ("County_Name" not in df.columns) or ("Date_Code" not in df.columns):
+            logs.append(fname + ": missing County_Name or Date_Code after read")
             continue
 
+        # Clean county
         df["County_Name"] = df["County_Name"].astype(str).str.strip()
-        # Filter out statewide totals and purely numeric/empty county names
         df = df[df["County_Name"] != "Statewide"].copy()
+        df = df.dropna(subset=["County_Name"]).copy()
         df = df[df["County_Name"].apply(lambda x: bool(county_has_letter.search(x)))].copy()
         if df.empty:
-            logs.append(os.path.basename(path) + ": empty after county filtering")
+            logs.append(fname + ": empty after county filtering")
             continue
 
-        df["Date"] = parse_monthcode_series(df["Date_Code"])
+        # Parse dates
+        df["Date"] = parse_date_code(df["Date_Code"])
         df = df.dropna(subset=["Date"]).copy()
         if df.empty:
-            logs.append(os.path.basename(path) + ": no parsable Date_Code values")
+            logs.append(fname + ": no parsable Date_Code values")
             continue
+
+        # Map metric columns by position after the known “front” columns
+        known_front = [c for c in ["Date_Code", "Month", "Year", "County_Name", "County_Code", "SFY", "FFY"] if c in df.columns]
+        rest_cols = [c for c in df.columns if c not in known_front]
+
+        # Rename rest columns to canonical metrics by position
+        rename_metrics = {}
+        for j, c in enumerate(rest_cols):
+            if j < len(METRICS_IN_ORDER):
+                rename_metrics[c] = METRICS_IN_ORDER[j]
+        df = df.rename(columns=rename_metrics)
 
         metric_cols = [c for c in METRICS_IN_ORDER if c in df.columns]
         if len(metric_cols) == 0:
-            logs.append(os.path.basename(path) + ": no metric columns recognized")
+            logs.append(fname + ": no metric columns recognized after mapping")
             continue
 
+        # Numeric coercion
         for c in metric_cols:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
         df = df.dropna(subset=metric_cols, how="all").copy()
         if df.empty:
-            logs.append(os.path.basename(path) + ": all metrics empty after coercion")
+            logs.append(fname + ": all metric values empty after numeric coercion")
             continue
 
-        keep_id = ["Date", "Date_Code", "County_Name"]
+        # Long
+        id_vars = ["Date", "Date_Code", "County_Name"]
         if "County_Code" in df.columns:
-            keep_id.append("County_Code")
+            id_vars.append("County_Code")
         if "SFY" in df.columns:
-            keep_id.append("SFY")
+            id_vars.append("SFY")
         if "FFY" in df.columns:
-            keep_id.append("FFY")
+            id_vars.append("FFY")
 
         df_long = pd.melt(
             df,
-            id_vars=keep_id,
+            id_vars=id_vars,
             value_vars=metric_cols,
             var_name="Metric",
             value_name="Value",
         )
-
         df_long = df_long.dropna(subset=["Value"]).copy()
-        frames_long.append(df_long)
 
-        logs.append(info + "; long_rows=" + str(len(df_long)) + "; " + str(df["Date"].min().date()) + " to " + str(df["Date"].max().date()))
+        frames.append(df_long)
+        logs.append(
+            info
+            + "; long_rows="
+            + str(len(df_long))
+            + "; "
+            + str(df["Date"].min().date())
+            + " to "
+            + str(df["Date"].max().date())
+        )
 
-    if len(frames_long) == 0:
+    if not frames:
         return pd.DataFrame(), logs
 
-    combined = pd.concat(frames_long, ignore_index=True)
+    combined = pd.concat(frames, ignore_index=True)
     combined = combined.sort_values("Date").reset_index(drop=True)
     combined = combined.drop_duplicates(subset=["Date", "County_Name", "Metric"], keep="first")
     return combined, logs
 
 # ----------------------------
-# UI: Preflight + load
+# UI: preflight
 # ----------------------------
-st.header("Preflight: Expected CSV files")
-st.write(GR_FILE_NAMES)
+st.header("Preflight: CSVs detected in /mnt/data")
+try:
+    st.write(sorted([f for f in os.listdir("/mnt/data") if f.lower().endswith(".csv")]))
+except Exception as e:
+    st.write("Could not list /mnt/data: " + str(e))
 
 data, logs = load_all(GR_FILE_NAMES)
 
@@ -309,7 +284,7 @@ with st.expander("Show load log details", expanded=True):
         st.write(l)
 
 if data.empty:
-    st.error("No data loaded. See log above.")
+    st.error("No data loaded. The log above tells you exactly what failed.")
     st.stop()
 
 st.success("Loaded " + str(len(data)) + " rows")
@@ -326,7 +301,7 @@ max_date = data["Date"].max().date()
 
 st.sidebar.header("Filter Options")
 
-# default to 2017-2019 window if available
+# default 2017-2019 if possible, else full range
 default_start = max(min_date, date(2017, 1, 1))
 default_end = min(max_date, date(2019, 12, 31))
 if default_end < default_start:
@@ -354,15 +329,18 @@ selected_metrics = st.sidebar.multiselect(
 )
 
 data_dated = data[
-    (data["Date"].dt.date >= date_range[0]) &
-    (data["Date"].dt.date <= date_range[1])
+    (data["Date"].dt.date >= date_range[0])
+    & (data["Date"].dt.date <= date_range[1])
 ].copy()
 
 df = data_dated[
-    data_dated["County_Name"].isin(selected_counties) &
-    data_dated["Metric"].isin(selected_metrics)
+    data_dated["County_Name"].isin(selected_counties)
+    & data_dated["Metric"].isin(selected_metrics)
 ].dropna(subset=["Value"]).copy()
 
+# ----------------------------
+# Chart
+# ----------------------------
 st.title("GR 237: General Relief")
 st.markdown("Use the sidebar filters to compare multiple counties and multiple metrics on the chart below.")
 
