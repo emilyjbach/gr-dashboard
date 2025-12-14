@@ -4,6 +4,7 @@ import altair as alt
 import re
 from datetime import date
 from pathlib import Path
+from typing import Optional
 
 alt.data_transformers.disable_max_rows()
 
@@ -93,7 +94,7 @@ def base_dir() -> Path:
 BASE_DIR = base_dir()
 CANDIDATE_DIRS = [BASE_DIR, BASE_DIR / "data"]
 
-def resolve_path(fname: str) -> Path | None:  # noqa: E999 (Streamlit runs 3.11; ok)
+def resolve_path(fname: str) -> Optional[Path]:
     for d in CANDIDATE_DIRS:
         p = d / fname
         if p.exists():
@@ -163,7 +164,7 @@ def parse_date_series(s: pd.Series) -> pd.Series:
     return out
 
 def build_date(df: pd.DataFrame) -> pd.Series:
-    # pref dat 
+    # pref dat
     if "Date_Code" in df.columns:
         d = parse_date_series(df["Date_Code"])
         if d.notna().any():
@@ -189,7 +190,7 @@ def build_date(df: pd.DataFrame) -> pd.Series:
 
     return pd.Series(pd.NaT, index=df.index)
 
-def read_gr_csv(path: Path, logs: list[str]) -> pd.DataFrame | None:  # noqa: E999
+def read_gr_csv(path: Path, logs: list[str]) -> Optional[pd.DataFrame]:
     try:
         df = pd.read_csv(path, header=4, engine="python")
         df = normalize_columns(df)
@@ -267,7 +268,7 @@ def load_all(files: list[str]):
             logs.append(f"{fname}: no parsable dates")
             continue
 
-        # good code! go good code! 
+        # good code! go good code!
         if "Report_Month" not in df.columns:
             df["Report_Month"] = df["Date"].dt.strftime("%b %Y")
 
@@ -348,18 +349,22 @@ try:
             format="YYYY/MM/DD",
         )
 
+        says_default_counties = ["Contra Costa", "Kern"]
+        default_counties = [c for c in says_default_counties if c in all_counties]
+        if not default_counties:
+            default_counties = all_counties[:2]
+
         selected_counties = st.multiselect(
             "Counties",
             options=all_counties,
-            default=[c for c in ["Alameda", "Fresno"] if c in all_counties] or all_counties[:2],
+            default=default_counties,
         )
 
+        default_metric = "A. 2. Cases added during month"
         selected_metrics = st.multiselect(
             "Metrics",
             options=metrics,
-            default=["A. 1. Cases brought forward"]
-            if "A. 1. Cases brought forward" in metrics
-            else (["B. 6. Total General Relief Cases"] if "B. 6. Total General Relief Cases" in metrics else metrics[:1]),
+            default=[default_metric] if default_metric in metrics else (metrics[:1] if metrics else []),
         )
 
     # filtered view
