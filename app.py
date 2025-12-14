@@ -4,9 +4,9 @@ import altair as alt
 import re
 from datetime import date
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, List
 
-# Altair silently truncates >5000 rows unless disabled
+# Altair silently truncates datasets > 5000 rows unless disabled
 alt.data_transformers.disable_max_rows()
 
 st.set_page_config(
@@ -15,16 +15,13 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Render *something* immediately so a crash doesn't look like a blank page
+# Always render something at the top so failures don't look like a blank page
 st.title("GR 237: General Relief")
-st.caption("If something breaks, toggle the debug log in the sidebar to see exactly why.")
+st.caption("Use the sidebar filters. Enable debug to see exactly what each CSV did during loading.")
 
-# ----------------------------
-# Sidebar
-# ----------------------------
 with st.sidebar:
     st.header("Filter Options")
-    show_debug = st.checkbox("Show debug log", value=True)
+    show_debug = st.checkbox("Show debug log", value=False)
 
 # ----------------------------
 # Metric sorting
@@ -61,7 +58,8 @@ GR_FILE_NAMES = [
 ]
 
 # ----------------------------
-# Canonical metric order (maps “remaining columns” by position)
+# Canonical metric order for GR237
+# (maps numbered columns 1..N)
 # ----------------------------
 METRICS_IN_ORDER = [
     "A. Adjustment",
@@ -98,8 +96,7 @@ METRICS_IN_ORDER = [
 # ----------------------------
 # Path resolution (GitHub/Streamlit Cloud-friendly)
 # ----------------------------
-def get_base_dir() -> Path:
-    # __file__ exists in normal streamlit runs; fallback to cwd just in case
+def get_base_dir():
     try:
         return Path(__file__).resolve().parent
     except Exception:
@@ -108,7 +105,7 @@ def get_base_dir() -> Path:
 BASE_DIR = get_base_dir()
 CANDIDATE_DIRS = [BASE_DIR, BASE_DIR / "data"]
 
-def resolve_path(fname: str) -> Optional[Path]:
+def resolve_path(fname):
     for d in CANDIDATE_DIRS:
         p = d / fname
         if p.exists():
@@ -116,16 +113,15 @@ def resolve_path(fname: str) -> Optional[Path]:
     return None
 
 # ----------------------------
-# Header detection that works for 20-21..24-25
-# - brute-force try header rows 0..80 (fast: nrows=1)
-# - score the column names for county + date/month tokens
+# Header detection
+# Brute-force header rows 0..80, score column tokens
 # ----------------------------
-def _norm(x) -> str:
+def _norm(x):
     if x is None:
         return ""
     return str(x).strip().lstrip("\ufeff").strip().lower()
 
-def score_columns(cols) -> int:
+def score_columns(cols):
     ncols = [_norm(c) for c in cols]
     joined = " ".join(ncols)
 
@@ -153,7 +149,7 @@ def score_columns(cols) -> int:
 
     return score
 
-def find_best_header_row(path: Path, max_h: int = 80) -> Optional[int]:
+def find_best_header_row(path, max_h=80):
     best_h = None
     best_score = -1
     for h in range(0, max_h + 1):
@@ -165,13 +161,11 @@ def find_best_header_row(path: Path, max_h: int = 80) -> Optional[int]:
                 best_h = h
         except Exception:
             continue
-
-    # Require at least county + some date/month signal
     if best_h is None or best_score < 7:
         return None
     return best_h
 
-def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+def normalize_columns(df):
     rename_map = {}
     for c in df.columns:
         low = _norm(c)
@@ -197,7 +191,8 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     # Soft matches if still missing
     if "County_Name" not in df.columns:
         for c in df.columns:
-            if "county" in _norm(c) and "name" in _norm(c):
+            lc = _norm(c)
+            if "county" in lc and "name" in lc:
                 df = df.rename(columns={c: "County_Name"})
                 break
         if "County_Name" not in df.columns:
@@ -208,16 +203,17 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
     if "Date_Code" not in df.columns and "Report_Month" not in df.columns:
         for c in df.columns:
-            if "report" in _norm(c) and "month" in _norm(c):
+            lc = _norm(c)
+            if "report" in lc and "month" in lc:
                 df = df.rename(columns={c: "Report_Month"})
                 break
-            if _norm(c) in ("date", "date_code", "date code"):
+            if lc in ("date", "date_code", "date code"):
                 df = df.rename(columns={c: "Date_Code"})
                 break
 
     return df
 
-def read_gr_file(path: Path) -> Tuple[Optional[pd.DataFrame], str]:
+def read_gr_file(path):
     h = find_best_header_row(path)
     if h is None:
         return None, f"{path.name}: could not find a plausible header row (scan 0–80)"
@@ -233,7 +229,7 @@ def read_gr_file(path: Path) -> Tuple[Optional[pd.DataFrame], str]:
 # ----------------------------
 # Date parsing (old + new)
 # ----------------------------
-def parse_date_series(s: pd.Series) -> pd.Series:
+def parse_date_series(s):
     s = s.astype(str).str.strip()
     s = s.str.replace(r"\.0$", "", regex=True)
 
@@ -257,7 +253,7 @@ def parse_date_series(s: pd.Series) -> pd.Series:
     out = out.fillna(pd.to_datetime(s, errors="coerce"))
     return out
 
-def build_date(df: pd.DataFrame) -> pd.Series:
+def build_date(df):
     if "Date_Code" in df.columns:
         d = parse_date_series(df["Date_Code"])
         if d.notna().any():
@@ -277,6 +273,95 @@ def build_date(df: pd.DataFrame) -> pd.Series:
             d.loc[ok] = pd.to_datetime(yy + "-" + mm + "-01", errors="coerce")
         return d
     return pd.Series(pd.NaT, index=df.index)
+
+# ----------------------------
+# FIX FOR 2020–2025: Numeric-column metric mapping with auto offset
+#
+# Problem you hit:
+# Newer files can have numbered columns "1","2","3",... but:
+# - some years include Adjustment as column 1
+# - some years start at A.1 as column 1 (Adjustment omitted), shifting everything
+#
+# Solution:
+# - detect numeric columns by their header names
+# - try two mappings:
+#   offset=0: 1 -> METRICS_IN_ORDER[0] (includes Adjustment)
+#   offset=1: 1 -> METRICS_IN_ORDER[1] (starts at A.1)
+# - pick whichever produces more non-null values for anchor metrics
+# ----------------------------
+ANCHOR_METRICS = [
+    "A. 1. Cases brought forward",
+    "A. 2. Cases added during month",
+    "A. 5. Cases carried forward",
+    "B. 6. Total General Relief Cases",
+    "E. Net General Relief Expenditure",
+]
+
+def choose_numeric_metric_mapping(df, numeric_cols, fname_for_log, logs):
+    # Build two rename maps
+    def build_map(offset):
+        m = {}
+        for col in numeric_cols:
+            n = _norm(col)
+            # extract leading int from "1" or "1 " etc.
+            mobj = re.match(r"^(\d+)", n)
+            if not mobj:
+                continue
+            k = int(mobj.group(1))  # 1-based
+            idx = (k - 1) + offset
+            if 0 <= idx < len(METRICS_IN_ORDER):
+                m[col] = METRICS_IN_ORDER[idx]
+        return m
+
+    # Score mapping by how many non-null numeric values appear in anchor metrics
+    def score_map(rename_map):
+        tmp = df.rename(columns=rename_map)
+        score = 0
+        for am in ANCHOR_METRICS:
+            if am in tmp.columns:
+                v = pd.to_numeric(tmp[am], errors="coerce")
+                score += int(v.notna().sum())
+        return score
+
+    map0 = build_map(offset=0)
+    map1 = build_map(offset=1)
+
+    score0 = score_map(map0) if map0 else -1
+    score1 = score_map(map1) if map1 else -1
+
+    if score1 > score0:
+        logs.append(f"{fname_for_log}: numeric metric mapping chose OFFSET=1 (starts at A.1). scores: off0={score0}, off1={score1}")
+        return map1
+    else:
+        logs.append(f"{fname_for_log}: numeric metric mapping chose OFFSET=0 (includes Adjustment). scores: off0={score0}, off1={score1}")
+        return map0
+
+def apply_metric_mapping(df, fname_for_log, logs):
+    # If any canonical metric names already exist, leave them as-is.
+    existing_named = [c for c in df.columns if any(c == m for m in METRICS_IN_ORDER)]
+    # Identify purely numeric headers like "1","2",...
+    numeric_cols = [c for c in df.columns if re.fullmatch(r"\d+", _norm(c))]
+
+    if numeric_cols:
+        # Choose the best numeric mapping (offset 0 vs 1)
+        rename_map = choose_numeric_metric_mapping(df, numeric_cols, fname_for_log, logs)
+        if rename_map:
+            df = df.rename(columns=rename_map)
+
+    # If there are NO numeric columns and NO named metrics, fall back to positional mapping after front fields
+    metric_present = [m for m in METRICS_IN_ORDER if m in df.columns]
+    if (not metric_present) and (not numeric_cols):
+        known_front = [c for c in ["Date_Code", "Report_Month", "Month", "Year", "County_Name", "County_Code", "SFY", "FFY"] if c in df.columns]
+        rest_cols = [c for c in df.columns if c not in known_front]
+        rename_metrics = {}
+        for j, c in enumerate(rest_cols):
+            if j < len(METRICS_IN_ORDER):
+                rename_metrics[c] = METRICS_IN_ORDER[j]
+        if rename_metrics:
+            df = df.rename(columns=rename_metrics)
+            logs.append(f"{fname_for_log}: used positional metric mapping (no numeric headers found).")
+
+    return df
 
 # ----------------------------
 # Cached load/combine
@@ -302,7 +387,7 @@ def load_all(files):
             logs.append(f"{fname}: missing County_Name after read")
             continue
 
-        # county cleanup: must contain at least one letter
+        # County cleanup: must contain at least one letter
         df["County_Name"] = df["County_Name"].astype(str).str.strip()
         df = df[df["County_Name"] != "Statewide"].copy()
         df = df.dropna(subset=["County_Name"]).copy()
@@ -318,21 +403,15 @@ def load_all(files):
             logs.append(f"{fname}: no parsable dates (Date_Code/Report_Month/Month+Year)")
             continue
 
-        # Map metric columns by position after front fields
-        known_front = [c for c in ["Date_Code", "Report_Month", "Month", "Year", "County_Name", "County_Code", "SFY", "FFY"] if c in df.columns]
-        rest_cols = [c for c in df.columns if c not in known_front]
+        # >>> KEY FIX: robust metric mapping for 2020–2025 <<<
+        df = apply_metric_mapping(df, fname, logs)
 
-        rename_metrics = {}
-        for j, c in enumerate(rest_cols):
-            if j < len(METRICS_IN_ORDER):
-                rename_metrics[c] = METRICS_IN_ORDER[j]
-        df = df.rename(columns=rename_metrics)
-
-        metric_cols = [c for c in METRICS_IN_ORDER if c in df.columns]
+        metric_cols = [m for m in METRICS_IN_ORDER if m in df.columns]
         if not metric_cols:
             logs.append(f"{fname}: no metric columns recognized after mapping")
             continue
 
+        # Numeric coercion
         for c in metric_cols:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
@@ -377,10 +456,10 @@ def load_all(files):
     return combined, logs
 
 # ----------------------------
-# MAIN (wrapped so errors show, not blank)
+# MAIN (wrap so errors show)
 # ----------------------------
 try:
-    # Preflight list of files found
+    # Preflight
     found = []
     missing = []
     for f in GR_FILE_NAMES:
@@ -390,9 +469,9 @@ try:
             found.append(f)
 
     with st.expander("Preflight (files found / missing)", expanded=show_debug):
+        st.write("Looking in:", [str(d) for d in CANDIDATE_DIRS])
         st.write("**Found:**", found)
         st.write("**Missing:**", missing)
-        st.write("Looking in:", [str(d) for d in CANDIDATE_DIRS])
 
     data, logs = load_all(GR_FILE_NAMES)
 
@@ -402,22 +481,21 @@ try:
                 st.write(l)
 
     if data.empty:
-        st.error("No data loaded. Check the debug log above.")
+        st.error("No data loaded. Enable debug to see which files failed.")
         st.stop()
 
     min_date = data["Date"].min().date()
     max_date = data["Date"].max().date()
     st.write(f"**Loaded:** {len(data):,} rows • **Date range:** {min_date} → {max_date}")
 
-    # ----------------------------
-    # Sidebar filters (default END = max_date so it shows through 2025 automatically)
-    # ----------------------------
+    # Sidebar filters (default END = max_date so it shows through 2025)
     all_counties = sorted(data["County_Name"].unique().tolist())
     metrics = sorted(data["Metric"].unique().tolist(), key=metric_sort_key)
 
     with st.sidebar:
         default_start = max(min_date, date(2017, 1, 1))
-        default_end = max_date  # THIS is what makes it show through 2025
+        default_end = max_date
+
         date_range = st.slider(
             "Date Range",
             min_value=min_date,
@@ -435,12 +513,12 @@ try:
         selected_metrics = st.multiselect(
             "Metrics",
             options=metrics,
-            default=["B. 6. Total General Relief Cases"]
-            if "B. 6. Total General Relief Cases" in metrics
-            else metrics[:1],
+            default=["A. 1. Cases brought forward"]
+            if "A. 1. Cases brought forward" in metrics
+            else (["B. 6. Total General Relief Cases"] if "B. 6. Total General Relief Cases" in metrics else metrics[:1]),
         )
 
-    # Filter data
+    # Filter
     data_dated = data[
         (data["Date"].dt.date >= date_range[0]) &
         (data["Date"].dt.date <= date_range[1])
@@ -457,7 +535,6 @@ try:
 
     df["Series"] = df["County_Name"] + " - " + df["Metric"]
 
-    # Chart
     chart = alt.Chart(df).mark_line(point=True).encode(
         x=alt.X("Date:T", axis=alt.Axis(title="Report Month", format="%b %Y")),
         y=alt.Y("Value:Q", scale=alt.Scale(zero=False), title="Value"),
@@ -477,5 +554,5 @@ try:
     st.dataframe(df.drop(columns=["Series"], errors="ignore"))
 
 except Exception as e:
-    st.error("The app crashed (this is why it looked blank). Here’s the full error:")
+    st.error("The app crashed (this is why it looked blank). Here’s the error:")
     st.exception(e)
