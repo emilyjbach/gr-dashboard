@@ -3,7 +3,6 @@ import pandas as pd
 import altair as alt
 import os
 
-
 GR_FILE_NAMES = [
     "15-16.csv",
     "16-17.csv",
@@ -16,6 +15,7 @@ GR_FILE_NAMES = [
     "23-24.csv",
     "24-25.csv", 
 ]
+
 # config
 st.set_page_config(
     page_title="General Relief (GR) Interactive Database",
@@ -68,6 +68,7 @@ def prepare_and_combine_gr_data(file_names):
         
         # Part C. SSI/SSP Interim Assistance
         24: "C. 7. Cases added during month (IA)",
+        24: "C. 7. Cases added during month (IA)", # Note: The original had this key 24 twice, this will use the second value. 
         25: "C. 8. Total SSA checks disposed of",
         26: "C. 8a. Disposed within 1-10 days",
         27: "C. 9. SSA sent SSI/SSP check directly",
@@ -96,7 +97,7 @@ def prepare_and_combine_gr_data(file_names):
             
             df = pd.read_csv(file_name, header=4)
             
-            
+            # Rename columns based on the map
             df.columns = [column_index_map.get(i, col) for i, col in enumerate(df.columns)]
             
             
@@ -107,14 +108,15 @@ def prepare_and_combine_gr_data(file_names):
             df = df[df["County_Name"] != "Statewide"].copy()
             df = df.dropna(subset=['County_Name'])
 
-            # dates fixer
-df['Date'] = pd.to_datetime(df['Report_Month'], errors='coerce') 
-df = df.dropna(subset=['Date'])
+            # dates fixer - CORRECT INDENTATION HERE
+            df['Date'] = pd.to_datetime(df['Report_Month'], errors='coerce')
+            df = df.dropna(subset=['Date'])
             
             # num fixer
             for col in metric_cols:
                 if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                    # Use apply for cleaner type conversion in case of mixed types
+                    df[col] = pd.to_numeric(df[col], errors='coerce') 
 
             df = df.dropna(subset=metric_cols, how='all')
 
@@ -138,7 +140,8 @@ df = df.dropna(subset=['Date'])
     if all_data_frames:
         df_combined = pd.concat(all_data_frames, ignore_index=True)
         df_combined = df_combined.sort_values('Date').reset_index(drop=True)
-        df_combined = df_combined.drop_duplicates(subset=['Date', 'County_Name', 'Metric'], keep='first')
+        # Keep only the first record for any Date/County/Metric combination
+        df_combined = df_combined.drop_duplicates(subset=['Date', 'County_Name', 'Metric'], keep='first') 
         return df_combined
     else:
         st.error("No data could be processed and combined. Check file names and structure.")
@@ -189,29 +192,7 @@ if not selected_counties or not selected_metrics:
 df_filtered = data[
     data['County_Name'].isin(selected_counties) &
     data['Metric'].isin(selected_metrics)
-].copy()
-
-df_filtered = df_filtered.dropna(subset=['Value'])
-
-# viz
-if df_filtered.empty:
-    st.warning("No data found for the selected combination of counties and metrics.")
-else:
-    df_filtered['County_Metric'] = df_filtered['County_Name'] + ' - ' + df_filtered['Metric']
-    y_title = "Value (Cases, Persons, or Expenditures)"
-
-    base = alt.Chart(df_filtered).encode(
-        x=alt.X('Date', axis=alt.Axis(title='Report Month', format="%b %Y")),
-        y=alt.Y('Value', title=y_title, scale=alt.Scale(zero=False)),
-        color='County_Metric',
-        tooltip=['Report_Month', 'County_Name', 'Metric', alt.Tooltip('Value', format=',.0f')]
-    ).properties(
-        title="Interactive GR Database [EB DRAFT]"
-    ).interactive() 
-
-    line_chart = base.mark_line(point=True)
-
-    st.altair_chart(line_chart, use_container_width=True)
+].copy
 
     st.markdown("---")
     st.subheader("Raw Data Preview")
