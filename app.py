@@ -105,6 +105,9 @@ def prepare_and_combine_gr_data(file_names):
             # data clean & prep
             df = df[df["County_Name"] != "Statewide"].copy()
             df = df.dropna(subset=['County_Name'])
+            
+            # CRITICAL FIX: Ensure County_Name is always a string to prevent TypeError on sorted()
+            df['County_Name'] = df['County_Name'].astype(str)
 
             # dates fixer
             df['Date'] = pd.to_datetime(df['Report_Month'], errors='coerce')
@@ -146,7 +149,7 @@ def prepare_and_combine_gr_data(file_names):
 # run data combination 
 data = prepare_and_combine_gr_data(GR_FILE_NAMES)
 
-# --- START NEW DEBUGGING BLOCK (Helps diagnose the recurring TypeError) ---
+# --- DEBUGGING BLOCK (Now helps confirm the fix worked) ---
 st.header("🔍 Data Loading Check")
 
 if not isinstance(data, pd.DataFrame):
@@ -162,10 +165,11 @@ if 'County_Name' not in data.columns:
     st.stop()
     
 st.success(f"Data Loaded Successfully: {len(data)} rows and {len(data.columns)} columns.")
-# --- END NEW DEBUGGING BLOCK ---
+# --- END DEBUGGING BLOCK ---
 
 
 # get uq lists for selectors 
+# This line should now succeed due to the .astype(str) fix
 all_counties = sorted(data['County_Name'].unique().tolist())
 metric_categories = data['Metric'].unique().tolist()
 
