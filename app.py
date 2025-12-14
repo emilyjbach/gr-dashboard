@@ -30,7 +30,7 @@ st.markdown(
 
       div.st-emotion-cache-6qob1r.eczjsme3 {
             color: white;
-            background-color: black;
+            background-color: blue;
             
         }
 
