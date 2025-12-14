@@ -45,25 +45,12 @@ st.set_page_config(
 )
 
 # ----------------------------
-# Data loader
+# Data loader (FIXED DATE LOGIC)
 # ----------------------------
 @st.cache_data
 def prepare_and_combine_gr_data(file_names):
     frames = []
     logs = []
-
-    DATE_FORMATS = [
-        "%Y%m",
-        "%Y-%m",
-        "%Y-%m-%d",
-        "%m/%Y",
-        "%m/%d/%Y",
-        "%b%y",
-        "%b-%y",
-        "%b %y",
-        "%b %Y",   # <<< FIX FOR 16-17
-        "%B %Y",   # <<< FIX FOR 16-17
-    ]
 
     column_index_map = {
         0: "Date_Code",
@@ -93,13 +80,9 @@ def prepare_and_combine_gr_data(file_names):
     metric_cols = list(column_index_map.values())[4:]
     county_has_letter = re.compile(r"[A-Za-z]")
 
-    def resolve_path(fname):
-        p = os.path.join("/mnt/data", fname)
-        return p if os.path.exists(p) else None
-
     for fname in file_names:
-        path = resolve_path(fname)
-        if not path:
+        path = os.path.join("/mnt/data", fname)
+        if not os.path.exists(path):
             logs.append(fname + ": missing")
             continue
 
@@ -114,13 +97,23 @@ def prepare_and_combine_gr_data(file_names):
 
         df["Date"] = pd.NaT
 
-        for source in ["Date_Code", "Report_Month"]:
-            if source in df.columns:
-                s = df[source].astype(str).str.strip()
-                for fmt in DATE_FORMATS:
-                    parsed = pd.to_datetime(s, format=fmt, errors="coerce")
-                    df["Date"] = df["Date"].fillna(parsed)
-                df["Date"] = df["Date"].fillna(pd.to_datetime(s, errors="coerce"))
+        # ---------- CRITICAL FIX ----------
+        # 1) Let pandas parse freely FIRST (this fixes 17–18)
+        for src in ["Date_Code", "Report_Month"]:
+            if src in df.columns:
+                s = df[src].astype(str).str.strip()
+                parsed = pd.to_datetime(s, errors="coerce", infer_datetime_format=True)
+                df["Date"] = df["Date"].fillna(parsed)
+
+        # 2) Numeric YYYYMM fallback
+        for src in ["Date_Code", "Report_Month"]:
+            if src in df.columns:
+                s = pd.to_numeric(df[src], errors="coerce")
+                idx = s.dropna().index
+                if len(idx) > 0:
+                    yyyymm = s.loc[idx].astype(int).astype(str)
+                    parsed = pd.to_datetime(yyyymm, format="%Y%m", errors="coerce")
+                    df.loc[idx, "Date"] = df.loc[idx, "Date"].fillna(parsed)
 
         if df["Date"].notna().sum() == 0:
             logs.append(fname + ": no parsable dates")
@@ -184,7 +177,7 @@ st.success(
 )
 
 # ----------------------------
-# Filters
+# Filters + Chart
 # ----------------------------
 all_counties = sorted(data["County_Name"].unique())
 metrics = sorted(data["Metric"].unique(), key=metric_sort_key)
@@ -216,9 +209,6 @@ df = data[
     & (data["Date"].dt.date <= date_range[1])
 ].dropna(subset=["Value"])
 
-# ----------------------------
-# Chart
-# ----------------------------
 st.title("GR 237: General Relief")
 
 df["Series"] = df["County_Name"] + " - " + df["Metric"]
