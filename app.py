@@ -71,9 +71,13 @@ def prepare_and_combine_gr_data(file_names):
     
     # List of date formats to try, based on common issues
     DATE_FORMATS_TO_TRY = [
-        None,         # Pandas auto-detection (often works for newer files)
-        '%Y%m',       # Format like 201507 (Highly likely for older government data)
-        '%m/%d/%Y',   # Format like 07/01/2015
+        None,         # 1. Pandas auto-detection (often works for newer files)
+        '%Y%m',       # 2. Format like 201507
+        '%Y-%m',      # 3. Format like 2015-07 (NEW)
+        '%Y/%m',      # 4. Format like 2015/07 (NEW)
+        '%m/%Y',      # 5. Format like 07/2015
+        '%m/%d/%Y',   # 6. Format like 07/01/2015
+        '%m-%d-%Y',   # 7. Format like 07-01-2015 (NEW)
     ]
 
 
@@ -165,7 +169,9 @@ def prepare_and_combine_gr_data(file_names):
             for fmt in DATE_FORMATS_TO_TRY:
                 try:
                     # pd.to_datetime handles 'None' for automatic detection
-                    df['Date'] = pd.to_datetime(date_col, format=fmt, errors='coerce')
+                    # Convert to string first to handle potential numeric Excel dates read as float
+                    temp_series = date_col.astype(str) 
+                    df['Date'] = pd.to_datetime(temp_series, format=fmt, errors='coerce')
                     
                     # Check if any dates were successfully parsed
                     if not df['Date'].isna().all():
@@ -176,6 +182,7 @@ def prepare_and_combine_gr_data(file_names):
                     # Ignore format specific errors and try the next one
                     continue
             
+            # This handles the scenario where the file was read but the dates failed to parse
             if not parsed:
                  st.warning(f"All date rows dropped from {file_name} due to unparsable date format.")
                  continue # Skip this file if no dates could be parsed
