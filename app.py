@@ -4,7 +4,7 @@ import altair as alt
 import re
 from datetime import date
 from pathlib import Path
-from typing import Optional, Tuple, Dict, List
+from typing import Optional, Tuple
 
 # Altair silently truncates datasets > 5000 rows unless disabled
 alt.data_transformers.disable_max_rows()
@@ -15,9 +15,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Always render something at the top so failures don't look like a blank page
+# Always render something so “blank page” never happens silently
 st.title("GR 237: General Relief")
-st.caption("Use the sidebar filters. Enable debug to see exactly what each CSV did during loading.")
+st.caption("Use the sidebar filters. Toggle debug to see exactly what each CSV did during loading.")
 
 with st.sidebar:
     st.header("Filter Options")
@@ -59,7 +59,6 @@ GR_FILE_NAMES = [
 
 # ----------------------------
 # Canonical metric order for GR237
-# (maps numbered columns 1..N)
 # ----------------------------
 METRICS_IN_ORDER = [
     "A. Adjustment",
@@ -68,28 +67,34 @@ METRICS_IN_ORDER = [
     "A. 3. Total cases available",
     "A. 4. Cases discontinued",
     "A. 5. Cases carried forward",
+
     "B. 6. Total General Relief Cases",
     "B. 6a. Family Cases",
     "B. 6b. One-person Cases",
+
     "B. 6. Total General Relief Persons",
     "B. 6a. Family Persons",
     "B. 6b. One-person Persons",
+
     "B. 6. Total GR Expenditure",
     "B. 6(1). Amount in Cash",
     "B. 6(2). Amount in Kind",
     "B. 6a. Family Amount",
     "B. 6b. One-person Amount",
+
     "C. 7. Cases added during month (IA)",
     "C. 8. Total SSA checks disposed of",
     "C. 8a. Disposed within 1-10 days",
     "C. 9. SSA sent SSI/SSP check directly",
     "C. 10. Denial notice received",
+
     "D. 11. Reimbursements Cases",
     "D. 11a. SSA check received Cases",
     "D. 11b. Repaid by recipient Cases",
     "D. 11. Reimbursements Amount",
     "D. 11a. SSA check received Amount",
     "D. 11b. Repaid by recipient Amount",
+
     "E. Net General Relief Expenditure",
 ]
 
@@ -113,8 +118,7 @@ def resolve_path(fname):
     return None
 
 # ----------------------------
-# Header detection
-# Brute-force header rows 0..80, score column tokens
+# Header detection (brute-force header rows 0..120)
 # ----------------------------
 def _norm(x):
     if x is None:
@@ -139,7 +143,6 @@ def score_columns(cols):
     if "ffy" in joined:
         score += 1
 
-    # bonus if we see many numeric-ish headers like 1,2,3...
     numlike = 0
     for c in ncols:
         if re.fullmatch(r"\d+", c):
@@ -149,7 +152,7 @@ def score_columns(cols):
 
     return score
 
-def find_best_header_row(path, max_h=80):
+def find_best_header_row(path, max_h=120):
     best_h = None
     best_score = -1
     for h in range(0, max_h + 1):
@@ -161,6 +164,7 @@ def find_best_header_row(path, max_h=80):
                 best_h = h
         except Exception:
             continue
+    # require county + date-ish signal
     if best_h is None or best_score < 7:
         return None
     return best_h
@@ -188,7 +192,7 @@ def normalize_columns(df):
 
     df = df.rename(columns=rename_map)
 
-    # Soft matches if still missing
+    # Soft matches
     if "County_Name" not in df.columns:
         for c in df.columns:
             lc = _norm(c)
@@ -216,7 +220,7 @@ def normalize_columns(df):
 def read_gr_file(path):
     h = find_best_header_row(path)
     if h is None:
-        return None, f"{path.name}: could not find a plausible header row (scan 0–80)"
+        return None, f"{path.name}: could not find a plausible header row (scan 0–120)"
 
     try:
         df = pd.read_csv(path, header=h, engine="python")
@@ -235,21 +239,17 @@ def parse_date_series(s):
 
     out = pd.Series(pd.NaT, index=s.index)
 
-    # Jul15 / Aug21 style
     out = out.fillna(pd.to_datetime(s.str.upper(), format="%b%y", errors="coerce"))
 
-    # Numeric YYYYMM (202007)
     num = pd.to_numeric(s, errors="coerce")
     idx = num.dropna().index
     if len(idx) > 0:
         yyyymm = num.loc[idx].astype(int).astype(str)
         out.loc[idx] = out.loc[idx].fillna(pd.to_datetime(yyyymm, format="%Y%m", errors="coerce"))
 
-    # Common newer formats
     for fmt in ("%Y-%m", "%Y-%m-%d", "%m/%Y", "%m/%d/%Y", "%b %Y", "%B %Y"):
         out = out.fillna(pd.to_datetime(s, format=fmt, errors="coerce"))
 
-    # Final auto
     out = out.fillna(pd.to_datetime(s, errors="coerce"))
     return out
 
@@ -275,82 +275,152 @@ def build_date(df):
     return pd.Series(pd.NaT, index=df.index)
 
 # ----------------------------
-# FIX FOR 2020–2025: Numeric-column metric mapping with auto offset
+# CRITICAL FIX: Metric mapping for 2020–2025 using arithmetic constraints
 #
-# Problem you hit:
-# Newer files can have numbered columns "1","2","3",... but:
-# - some years include Adjustment as column 1
-# - some years start at A.1 as column 1 (Adjustment omitted), shifting everything
+# Why A.1 breaks:
+# Newer files often have numeric headers "1","2","3"... but the numbering can be shifted
+# (e.g., sometimes "1" is A.1, sometimes "1" is Adjustment). A naive offset guess is unreliable.
 #
-# Solution:
-# - detect numeric columns by their header names
-# - try two mappings:
-#   offset=0: 1 -> METRICS_IN_ORDER[0] (includes Adjustment)
-#   offset=1: 1 -> METRICS_IN_ORDER[1] (starts at A.1)
-# - pick whichever produces more non-null values for anchor metrics
+# Fix:
+# Try multiple offsets and score them by how often GR identities hold:
+#   A3 ≈ A1 + A2 (+ Adjustment if present)
+#   A5 ≈ A3 - A4
+#   B total cases ≈ family + one-person
+#   B total persons ≈ family + one-person
+#   B total expenditure ≈ cash + kind
+# Choose the offset with the best constraint score, which pins A.1 correctly.
 # ----------------------------
-ANCHOR_METRICS = [
-    "A. 1. Cases brought forward",
-    "A. 2. Cases added during month",
-    "A. 5. Cases carried forward",
-    "B. 6. Total General Relief Cases",
-    "E. Net General Relief Expenditure",
+CONSTRAINTS = [
+    # (lhs, [rhs terms], tolerance)
+    ("A. 3. Total cases available", ["A. 1. Cases brought forward", "A. 2. Cases added during month"], 2.0),  # plus optional Adjustment handled separately
+    ("A. 5. Cases carried forward", ["A. 3. Total cases available", "A. 4. Cases discontinued"], 2.0),       # carried = total - discontinued
+    ("B. 6. Total General Relief Cases", ["B. 6a. Family Cases", "B. 6b. One-person Cases"], 2.0),
+    ("B. 6. Total General Relief Persons", ["B. 6a. Family Persons", "B. 6b. One-person Persons"], 2.0),
+    ("B. 6. Total GR Expenditure", ["B. 6(1). Amount in Cash", "B. 6(2). Amount in Kind"], 5.0),
 ]
 
-def choose_numeric_metric_mapping(df, numeric_cols, fname_for_log, logs):
-    # Build two rename maps
-    def build_map(offset):
-        m = {}
-        for col in numeric_cols:
-            n = _norm(col)
-            # extract leading int from "1" or "1 " etc.
-            mobj = re.match(r"^(\d+)", n)
-            if not mobj:
+def _to_num(s):
+    return pd.to_numeric(s, errors="coerce")
+
+def _constraint_score(tmp):
+    satisfied = 0
+    possible = 0
+
+    for lhs, rhs_terms, tol in CONSTRAINTS:
+        if lhs not in tmp.columns:
+            continue
+
+        # Special-case A3 equation: optionally include Adjustment if present
+        if lhs == "A. 3. Total cases available":
+            need = [lhs] + rhs_terms
+            if any(c not in tmp.columns for c in need):
                 continue
-            k = int(mobj.group(1))  # 1-based
+
+            lhs_v = _to_num(tmp[lhs])
+            a1 = _to_num(tmp[rhs_terms[0]])
+            a2 = _to_num(tmp[rhs_terms[1]])
+
+            # compare both with and without Adjustment; whichever is closer per-row
+            if "A. Adjustment" in tmp.columns:
+                adj = _to_num(tmp["A. Adjustment"])
+                rhs_with = a1 + a2 + adj
+                rhs_without = a1 + a2
+                ok = lhs_v.notna() & a1.notna() & a2.notna()
+                if ok.any():
+                    diff_with = (lhs_v - rhs_with).abs()
+                    diff_without = (lhs_v - rhs_without).abs()
+                    diff = diff_with.where(diff_with <= diff_without, diff_without)
+                    possible += int(ok.sum())
+                    satisfied += int(((diff <= tol) & ok).sum())
+            else:
+                rhs = a1 + a2
+                ok = lhs_v.notna() & a1.notna() & a2.notna()
+                if ok.any():
+                    diff = (lhs_v - rhs).abs()
+                    possible += int(ok.sum())
+                    satisfied += int(((diff <= tol) & ok).sum())
+            continue
+
+        # Generic: either lhs == sum(rhs) OR for carried-forward: lhs == rhs0 - rhs1
+        if any(c not in tmp.columns for c in [lhs] + rhs_terms):
+            continue
+
+        lhs_v = _to_num(tmp[lhs])
+        r0 = _to_num(tmp[rhs_terms[0]])
+        r1 = _to_num(tmp[rhs_terms[1]])
+
+        ok = lhs_v.notna() & r0.notna() & r1.notna()
+        if not ok.any():
+            continue
+
+        if lhs == "A. 5. Cases carried forward":
+            rhs = r0 - r1
+        else:
+            rhs = r0 + r1
+
+        diff = (lhs_v - rhs).abs()
+        possible += int(ok.sum())
+        satisfied += int(((diff <= tol) & ok).sum())
+
+    # also reward having lots of non-null A.1 (prevents weird “perfect score on tiny overlap”)
+    if "A. 1. Cases brought forward" in tmp.columns:
+        a1nn = int(_to_num(tmp["A. 1. Cases brought forward"]).notna().sum())
+    else:
+        a1nn = 0
+
+    return satisfied, possible, a1nn
+
+def choose_numeric_mapping_by_constraints(df, numeric_cols, logs, fname):
+    # Try offsets around where we expect the block to start.
+    # offset=0 means "1" -> METRICS_IN_ORDER[0] (Adjustment)
+    # offset=1 means "1" -> METRICS_IN_ORDER[1] (A.1)
+    candidates = list(range(-2, 6))  # broader than just 0/1
+
+    best = None
+    best_tuple = (-1, -1, -1)  # (satisfied, possible, a1nn)
+
+    for offset in candidates:
+        rename_map = {}
+        for col in numeric_cols:
+            m = re.match(r"^(\d+)$", _norm(col))
+            if not m:
+                continue
+            k = int(m.group(1))  # 1-based
             idx = (k - 1) + offset
             if 0 <= idx < len(METRICS_IN_ORDER):
-                m[col] = METRICS_IN_ORDER[idx]
-        return m
+                rename_map[col] = METRICS_IN_ORDER[idx]
 
-    # Score mapping by how many non-null numeric values appear in anchor metrics
-    def score_map(rename_map):
+        if not rename_map:
+            continue
+
         tmp = df.rename(columns=rename_map)
-        score = 0
-        for am in ANCHOR_METRICS:
-            if am in tmp.columns:
-                v = pd.to_numeric(tmp[am], errors="coerce")
-                score += int(v.notna().sum())
-        return score
 
-    map0 = build_map(offset=0)
-    map1 = build_map(offset=1)
+        sat, poss, a1nn = _constraint_score(tmp)
 
-    score0 = score_map(map0) if map0 else -1
-    score1 = score_map(map1) if map1 else -1
+        # Choose by: highest satisfied; tie-break by possible; tie-break by a1nn
+        key = (sat, poss, a1nn)
+        if key > best_tuple:
+            best_tuple = key
+            best = rename_map
 
-    if score1 > score0:
-        logs.append(f"{fname_for_log}: numeric metric mapping chose OFFSET=1 (starts at A.1). scores: off0={score0}, off1={score1}")
-        return map1
-    else:
-        logs.append(f"{fname_for_log}: numeric metric mapping chose OFFSET=0 (includes Adjustment). scores: off0={score0}, off1={score1}")
-        return map0
+    if best is None:
+        logs.append(f"{fname}: numeric mapping failed (no viable offsets)")
+        return {}
 
-def apply_metric_mapping(df, fname_for_log, logs):
-    # If any canonical metric names already exist, leave them as-is.
-    existing_named = [c for c in df.columns if any(c == m for m in METRICS_IN_ORDER)]
-    # Identify purely numeric headers like "1","2",...
+    logs.append(f"{fname}: numeric mapping chosen via constraints: satisfied={best_tuple[0]}, possible={best_tuple[1]}, A.1 nonnull={best_tuple[2]}")
+    return best
+
+def apply_metric_mapping(df, fname, logs):
+    # Prefer numeric headers if present (most reliable for 20-21+)
     numeric_cols = [c for c in df.columns if re.fullmatch(r"\d+", _norm(c))]
-
     if numeric_cols:
-        # Choose the best numeric mapping (offset 0 vs 1)
-        rename_map = choose_numeric_metric_mapping(df, numeric_cols, fname_for_log, logs)
-        if rename_map:
-            df = df.rename(columns=rename_map)
+        rename = choose_numeric_mapping_by_constraints(df, numeric_cols, logs, fname)
+        if rename:
+            df = df.rename(columns=rename)
 
-    # If there are NO numeric columns and NO named metrics, fall back to positional mapping after front fields
+    # If still no canonical metrics, fall back to positional mapping
     metric_present = [m for m in METRICS_IN_ORDER if m in df.columns]
-    if (not metric_present) and (not numeric_cols):
+    if not metric_present:
         known_front = [c for c in ["Date_Code", "Report_Month", "Month", "Year", "County_Name", "County_Code", "SFY", "FFY"] if c in df.columns]
         rest_cols = [c for c in df.columns if c not in known_front]
         rename_metrics = {}
@@ -359,7 +429,7 @@ def apply_metric_mapping(df, fname_for_log, logs):
                 rename_metrics[c] = METRICS_IN_ORDER[j]
         if rename_metrics:
             df = df.rename(columns=rename_metrics)
-            logs.append(f"{fname_for_log}: used positional metric mapping (no numeric headers found).")
+            logs.append(f"{fname}: used positional metric mapping (fallback).")
 
     return df
 
@@ -387,7 +457,6 @@ def load_all(files):
             logs.append(f"{fname}: missing County_Name after read")
             continue
 
-        # County cleanup: must contain at least one letter
         df["County_Name"] = df["County_Name"].astype(str).str.strip()
         df = df[df["County_Name"] != "Statewide"].copy()
         df = df.dropna(subset=["County_Name"]).copy()
@@ -396,14 +465,13 @@ def load_all(files):
             logs.append(f"{fname}: empty after county filtering")
             continue
 
-        # Date
         df["Date"] = build_date(df)
         df = df.dropna(subset=["Date"]).copy()
         if df.empty:
-            logs.append(f"{fname}: no parsable dates (Date_Code/Report_Month/Month+Year)")
+            logs.append(f"{fname}: no parsable dates")
             continue
 
-        # >>> KEY FIX: robust metric mapping for 2020–2025 <<<
+        # >>> KEY FIX FOR A.1 in 2020–2025 <<<
         df = apply_metric_mapping(df, fname, logs)
 
         metric_cols = [m for m in METRICS_IN_ORDER if m in df.columns]
@@ -411,7 +479,6 @@ def load_all(files):
             logs.append(f"{fname}: no metric columns recognized after mapping")
             continue
 
-        # Numeric coercion
         for c in metric_cols:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
@@ -420,7 +487,6 @@ def load_all(files):
             logs.append(f"{fname}: all metric values empty after numeric coercion")
             continue
 
-        # Long format
         id_vars = ["Date", "County_Name"]
         if "County_Code" in df.columns:
             id_vars.append("County_Code")
@@ -456,17 +522,14 @@ def load_all(files):
     return combined, logs
 
 # ----------------------------
-# MAIN (wrap so errors show)
+# MAIN (wrapped so errors show in the app)
 # ----------------------------
 try:
     # Preflight
     found = []
     missing = []
     for f in GR_FILE_NAMES:
-        if resolve_path(f) is None:
-            missing.append(f)
-        else:
-            found.append(f)
+        (found if resolve_path(f) else missing).append(f)
 
     with st.expander("Preflight (files found / missing)", expanded=show_debug):
         st.write("Looking in:", [str(d) for d in CANDIDATE_DIRS])
@@ -488,7 +551,7 @@ try:
     max_date = data["Date"].max().date()
     st.write(f"**Loaded:** {len(data):,} rows • **Date range:** {min_date} → {max_date}")
 
-    # Sidebar filters (default END = max_date so it shows through 2025)
+    # Sidebar filters (default END = max_date so it goes through 2025 automatically)
     all_counties = sorted(data["County_Name"].unique().tolist())
     metrics = sorted(data["Metric"].unique().tolist(), key=metric_sort_key)
 
@@ -535,6 +598,7 @@ try:
 
     df["Series"] = df["County_Name"] + " - " + df["Metric"]
 
+    # Chart
     chart = alt.Chart(df).mark_line(point=True).encode(
         x=alt.X("Date:T", axis=alt.Axis(title="Report Month", format="%b %Y")),
         y=alt.Y("Value:Q", scale=alt.Scale(zero=False), title="Value"),
