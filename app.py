@@ -10,22 +10,17 @@ from datetime import date
 # ----------------------------
 def metric_sort_key(metric_name):
     name = str(metric_name)
-
     m = re.match(r"^\s*([A-E])", name)
     letter = m.group(1) if m else "Z"
-
     n = re.search(r"(\d+)", name)
     number = int(n.group(1)) if n else 0
-
     lower = name.lower()
     sub = 0
     if ("a." in lower) or (" a " in lower):
         sub = 1
     elif ("b." in lower) or (" b " in lower):
         sub = 2
-
     return (letter, number, sub)
-
 
 # ----------------------------
 # File List
@@ -53,30 +48,29 @@ st.set_page_config(
 )
 
 # ----------------------------
-# Data Preparation (FIX: do NOT drop older years)
-# Key fixes:
-# 1) resolve paths in /mnt/data too
-# 2) robust Date_Code + Report_Month parsing (many formats)
-# 3) NEVER call dropna(subset=metric_cols) if some metric_cols are missing
-#    -> use existing_metric_cols instead (this is what was skipping 2015-2019)
-# 4) melt id_vars only if columns exist
+# Data Preparation
+# Fix for 16-17.csv "no parsable dates":
+# 1) try multiple header rows (some years shift)
+# 2) if mapped Date_Code/Report_Month missing, fall back to raw column positions
+# 3) try more date formats commonly seen in GR files
 # ----------------------------
 @st.cache_data
 def prepare_and_combine_gr_data(file_names):
     all_data_frames = []
     logs = []
 
-    # Many GR files vary in how months are encoded; we try a broad set.
-    DATE_FORMATS_TO_TRY = [
-        None,           # pandas auto (YYYY-MM-DD, etc.)
-        "%Y%m",         # 201507
-        "%Y-%m",        # 2015-07
-        "%Y-%m-%d",     # 2015-07-01
-        "%m/%Y",        # 07/2015
-        "%m/%d/%Y",     # 07/01/2015
-        "%b%y",         # Jul15
-        "%b-%y",        # Jul-15
-        "%b %y",        # Jul 15
+    DATE_FORMATS = [
+        "%Y%m",         # 201607
+        "%Y-%m",        # 2016-07
+        "%Y-%m-%d",     # 2016-07-01
+        "%m/%Y",        # 07/2016
+        "%m/%d/%Y",     # 07/01/2016
+        "%b%y",         # Jul16
+        "%b-%y",        # Jul-16
+        "%b %y",        # Jul 16
+        "%b%Y",         # Jul2016
+        "%b-%Y",        # Jul-2016
+        "%b %Y",        # Jul 2016
     ]
 
     column_index_map = {
@@ -133,123 +127,170 @@ def prepare_and_combine_gr_data(file_names):
             return alt_path
         return None
 
+    def try_read_csv(path):
+        # Some GR years have a different number of preamble rows.
+        # Try a few headers and take the first that yields a non-trivial frame.
+        for h in [4, 5, 3, 0]:
+            try:
+                df0 = pd.read_csv(path, header=h)
+                if isinstance(df0, pd.DataFrame) and df0.shape[1] >= 6 and df0.shape[0] >= 1:
+                    return df0, h
+            except Exception:
+                pass
+        return None, None
+
+    def parse_date_series(series):
+        s = series.astype(str).str.strip()
+
+        # Normalize common junk:
+        # - remove trailing ".0" from numeric-like strings
+        # - remove extra spaces
+        s = s.str.replace(r"\.0$", "", regex=True)
+        s = s.str.replace(r"\s+", " ", regex=True)
+
+        out = pd.Series(pd.NaT, index=s.index)
+
+        # Numeric YYYYMM path
+        num = pd.to_numeric(s, errors="coerce")
+        idx = num.dropna().index
+        if len(idx) > 0:
+            yyyymm = num.loc[idx].astype(int).astype(str)
+            out.loc[idx] = pd.to_datetime(yyyymm, format="%Y%m", errors="coerce")
+
+        # Explicit formats
+        for fmt in DATE_FORMATS:
+            parsed = pd.to_datetime(s, format=fmt, errors="coerce")
+            out = out.fillna(parsed)
+
+        # Final auto-detect
+        out = out.fillna(pd.to_datetime(s, errors="coerce"))
+        return out
+
     for file_name in file_names:
         path = resolve_path(file_name)
         if not path:
-            logs.append("Missing file: " + str(file_name))
+            logs.append(file_name + ": missing file")
             continue
 
+        df_raw, used_header = try_read_csv(path)
+        if df_raw is None:
+            logs.append(file_name + ": could not read csv")
+            continue
+
+        # Rename by index (your original approach)
+        df = df_raw.copy()
+        df.columns = [column_index_map.get(i, col) for i, col in enumerate(df.columns)]
+
+        # Keep only known mapped columns that exist (but keep a copy of raw for fallbacks)
+        cols_to_keep = [c for c in column_index_map.values() if c in df.columns]
+        df = df[cols_to_keep].copy()
+
+        if "County_Name" not in df.columns:
+            # If mapping failed due to shifted columns, try to recover county by raw position 1
+            try:
+                df_raw_county = df_raw.iloc[:, 1]
+                df["County_Name"] = df_raw_county
+            except Exception:
+                logs.append(file_name + ": County_Name missing after mapping (header=" + str(used_header) + ")")
+                continue
+
+        # County cleanup
+        df = df[df["County_Name"] != "Statewide"].copy()
+        df = df.dropna(subset=["County_Name"]).copy()
+        df["County_Name"] = df["County_Name"].astype(str).str.strip()
+
+        numeric_mask = df["County_Name"].str.match(r"^\d+(\.\d+)?$")
+        df = df[~numeric_mask].copy()
+        df = df[df["County_Name"].apply(lambda x: bool(county_has_letter.search(x)))].copy()
+
+        # ---- Date parsing with robust fallbacks ----
+        df["Date"] = pd.NaT
+
+        # Preferred: mapped columns if present
+        candidates = []
+
+        if "Date_Code" in df.columns:
+            candidates.append(("Date_Code", df["Date_Code"]))
+        if "Report_Month" in df.columns:
+            candidates.append(("Report_Month", df["Report_Month"]))
+
+        # Critical fallback for 16-17 when mapping shifts:
+        # use raw col 0 (often Date_Code) and raw col 6 (often Report_Month) if they exist
         try:
-            df = pd.read_csv(path, header=4)
+            if df_raw.shape[1] >= 1:
+                candidates.append(("RAW_COL0", df_raw.iloc[:, 0]))
+        except Exception:
+            pass
+        try:
+            if df_raw.shape[1] >= 7:
+                candidates.append(("RAW_COL6", df_raw.iloc[:, 6]))
+        except Exception:
+            pass
 
-            # Rename columns by position
-            df.columns = [column_index_map.get(i, col) for i, col in enumerate(df.columns)]
+        # Also try any raw columns whose header contains "month" or "date"
+        try:
+            for c in df_raw.columns:
+                cstr = str(c).lower()
+                if ("month" in cstr) or ("date" in cstr):
+                    candidates.append(("RAW_NAME_" + str(c), df_raw[c]))
+        except Exception:
+            pass
 
-            # Keep only mapped columns that exist
-            cols_to_keep = [c for c in column_index_map.values() if c in df.columns]
-            df = df[cols_to_keep].copy()
-
-            # Basic cleaning
-            if "County_Name" not in df.columns:
-                logs.append(file_name + ": missing County_Name after mapping")
+        # Apply candidates until we get some dates
+        for label, series in candidates:
+            if df["Date"].notna().sum() > 0:
+                break
+            try:
+                df["Date"] = df["Date"].fillna(parse_date_series(series))
+            except Exception:
                 continue
 
-            df = df[df["County_Name"] != "Statewide"].copy()
-            df = df.dropna(subset=["County_Name"]).copy()
-            df["County_Name"] = df["County_Name"].astype(str).str.strip()
-
-            # Drop numeric-ish county rows, keep names that contain at least one letter
-            numeric_mask = df["County_Name"].str.match(r"^\d+(\.\d+)?$")
-            df = df[~numeric_mask].copy()
-            df = df[df["County_Name"].apply(lambda x: bool(county_has_letter.search(x)))].copy()
-
-            # ---- Date parsing ----
-            df["Date"] = pd.NaT
-
-            # Prefer Date_Code for older years if present
-            if "Date_Code" in df.columns:
-                dc_raw = df["Date_Code"].astype(str).str.strip()
-
-                # If Date_Code sometimes numeric like 201507 or 201507.0
-                dc_num = pd.to_numeric(dc_raw, errors="coerce")
-                idx_num = dc_num.dropna().index
-                if len(idx_num) > 0:
-                    dc_yyyymm = dc_num.loc[idx_num].astype(int).astype(str)
-                    parsed_dc_num = pd.to_datetime(dc_yyyymm, format="%Y%m", errors="coerce")
-                    df.loc[idx_num, "Date"] = df.loc[idx_num, "Date"].fillna(parsed_dc_num)
-
-                # Try several explicit formats then auto
-                dc_up = dc_raw.str.upper()
-                for fmt in ["%b%y", "%b-%y", "%b %y"]:
-                    parsed_dc = pd.to_datetime(dc_up, format=fmt, errors="coerce")
-                    df["Date"] = df["Date"].fillna(parsed_dc)
-
-                df["Date"] = df["Date"].fillna(pd.to_datetime(dc_raw, errors="coerce"))
-
-            # Then try Report_Month (newer years / fallback)
-            if "Report_Month" in df.columns:
-                rm_raw = df["Report_Month"].astype(str).str.strip()
-
-                # Numeric YYYYMM (very common in older/newer mixed)
-                rm_num = pd.to_numeric(rm_raw, errors="coerce")
-                idx_rm = rm_num.dropna().index
-                if len(idx_rm) > 0:
-                    rm_yyyymm = rm_num.loc[idx_rm].astype(int).astype(str)
-                    parsed_rm_num = pd.to_datetime(rm_yyyymm, format="%Y%m", errors="coerce")
-                    df.loc[idx_rm, "Date"] = df.loc[idx_rm, "Date"].fillna(parsed_rm_num)
-
-                # Try formats
-                for fmt in DATE_FORMATS_TO_TRY:
-                    parsed_rm = pd.to_datetime(rm_raw, format=fmt, errors="coerce")
-                    df["Date"] = df["Date"].fillna(parsed_rm)
-
-                # Final auto
-                df["Date"] = df["Date"].fillna(pd.to_datetime(rm_raw, errors="coerce"))
-
-            if df["Date"].notna().sum() == 0:
-                logs.append(file_name + ": no parsable dates (skipped)")
-                continue
-
-            df = df.dropna(subset=["Date"]).copy()
-
-            # ---- Metrics numeric coercion (only existing columns) ----
-            existing_metric_cols = [c for c in metric_cols_full if c in df.columns]
-            if len(existing_metric_cols) == 0:
-                logs.append(file_name + ": no metric columns after mapping (skipped)")
-                continue
-
-            for col in existing_metric_cols:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
-
-            # CRITICAL FIX: dropna only on existing metrics (older files may have fewer cols)
-            df = df.dropna(subset=existing_metric_cols, how="all").copy()
-            if df.empty:
-                logs.append(file_name + ": all metric values empty after coercion (skipped)")
-                continue
-
-            # ---- Melt (id_vars must exist) ----
-            id_vars = []
-            for c in ["Date", "Report_Month", "County_Name", "County_Code"]:
-                if c in df.columns:
-                    id_vars.append(c)
-
-            df_long = pd.melt(
-                df,
-                id_vars=id_vars,
-                value_vars=existing_metric_cols,
-                var_name="Metric",
-                value_name="Value",
-            )
-
-            all_data_frames.append(df_long)
-
-            file_min = df["Date"].min().date()
-            file_max = df["Date"].max().date()
-            logs.append(file_name + ": loaded " + str(len(df_long)) + " rows (" + str(file_min) + " to " + str(file_max) + ")")
-
-        except Exception as e:
-            logs.append(file_name + ": error " + str(e))
+        if df["Date"].notna().sum() == 0:
+            logs.append(file_name + ": no parsable dates (skipped) (header=" + str(used_header) + ")")
             continue
+
+        df = df.dropna(subset=["Date"]).copy()
+
+        # ---- Metrics (only existing) ----
+        existing_metric_cols = [c for c in metric_cols_full if c in df.columns]
+        if len(existing_metric_cols) == 0:
+            logs.append(file_name + ": no metric columns after mapping (skipped) (header=" + str(used_header) + ")")
+            continue
+
+        for col in existing_metric_cols:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        df = df.dropna(subset=existing_metric_cols, how="all").copy()
+        if df.empty:
+            logs.append(file_name + ": empty after metric coercion (skipped)")
+            continue
+
+        # ---- Melt ----
+        id_vars = []
+        for c in ["Date", "Report_Month", "County_Name", "County_Code"]:
+            if c in df.columns:
+                id_vars.append(c)
+
+        df_long = pd.melt(
+            df,
+            id_vars=id_vars,
+            value_vars=existing_metric_cols,
+            var_name="Metric",
+            value_name="Value",
+        )
+
+        all_data_frames.append(df_long)
+        logs.append(
+            file_name
+            + ": loaded "
+            + str(len(df_long))
+            + " rows; dates "
+            + str(df["Date"].min().date())
+            + " to "
+            + str(df["Date"].max().date())
+            + "; header="
+            + str(used_header)
+        )
 
     if len(all_data_frames) == 0:
         return pd.DataFrame(), logs
@@ -270,15 +311,11 @@ with st.expander("Show load log"):
     for line in load_logs:
         st.write(line)
 
-if not isinstance(data, pd.DataFrame):
-    st.error("FATAL: data loader did not return a DataFrame.")
+if not isinstance(data, pd.DataFrame) or data.empty:
+    st.error("No data loaded. Check the load log above.")
     st.stop()
 
-if data.empty:
-    st.error("The combined DataFrame is EMPTY. Ensure the CSVs exist in the app directory or /mnt/data.")
-    st.stop()
-
-st.success("Data loaded successfully: " + str(len(data)) + " rows, " + str(len(data.columns)) + " columns.")
+st.success("Data loaded: " + str(len(data)) + " rows")
 st.write("Overall date range: " + str(data["Date"].min().date()) + " to " + str(data["Date"].max().date()))
 
 # ----------------------------
@@ -351,7 +388,7 @@ df_filtered = df_filtered.dropna(subset=["Value"]).copy()
 # Visualization
 # ----------------------------
 if df_filtered.empty:
-    st.warning("No data found for the selected combination of counties, metrics, and date range.")
+    st.warning("No data found for the selected filters.")
 else:
     df_filtered["County_Metric"] = df_filtered["County_Name"] + " - " + df_filtered["Metric"]
 
@@ -376,7 +413,6 @@ else:
 # ----------------------------
 st.markdown("---")
 st.subheader("📊 Underlying Filtered Data")
-
 df_display = df_filtered.drop(columns=["County_Metric"], errors="ignore").copy()
 df_display = df_display.rename(columns={"Value": "Value (Cases/Persons/Amount)"})
 st.dataframe(df_display)
