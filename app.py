@@ -27,7 +27,12 @@ st.markdown(
       section[data-testid="stSidebar"] { border-right: 1px solid rgba(49,51,63,0.12); }
       section[data-testid="stSidebar"] .block-container { padding-top: 1.2rem; }
       section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 { letter-spacing: -0.02em; }
-      
+
+      div.st-emotion-cache-6qob1r.eczjsme3 {
+            color: white;
+            background-color: black;
+            
+        }
 
 
       /* top hero card */
