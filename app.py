@@ -391,4 +391,4 @@ st.altair_chart(chart, use_container_width=True)
 
 st.markdown("---")
 st.subheader("Underlying Data")
-st.dataframe(df.drop(columns=["Series"], errors="ignore"]))
+st.dataframe(df.drop(columns=["Series"], errors="ignore"))
