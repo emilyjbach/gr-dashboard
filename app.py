@@ -298,11 +298,8 @@ def load_all(files):
 # ----------------------------
 # UI: Preflight + load
 # ----------------------------
-st.header("Preflight: CSVs detected in /mnt/data")
-try:
-    st.write(sorted([f for f in os.listdir("/mnt/data") if f.lower().endswith(".csv")]))
-except Exception as e:
-    st.write("Could not list /mnt/data: " + str(e))
+st.header("Preflight: Expected CSV files")
+st.write(GR_FILE_NAMES)
 
 data, logs = load_all(GR_FILE_NAMES)
 
