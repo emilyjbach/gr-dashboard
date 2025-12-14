@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- poppy but professional styling (non-breaking) ---
+# styling 
 st.markdown(
     """
     <style>
@@ -110,7 +110,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-# --- end styling ---
+# end styling
 
 st.title("GR 237: General Relief")
 st.caption("Emily Bach to do: stylize, update plan, res a.1. filepath for 2020+ in some counties, res * data q")
@@ -430,12 +430,12 @@ try:
     min_date = data["Date"].min().date()
     max_date = data["Date"].max().date()
 
-    # --- HERO + STATS (style only; doesn't touch logic) ---
+    # styling hero
     st.markdown(
         f"""
         <div class="gr-hero">
-          <div class="gr-hero-title">Interactive GR Trends</div>
-          <p class="gr-hero-sub">Compare counties and metrics over time. Use the sidebar to explore patterns and outliers.</p>
+          <div class="gr-hero-title">Interactive Trends in GR 237 - General Relief and Interim Assistance to Applicants for SSI/SSP Monthly Caseload and Expenditure Statistical Report</div>
+          <p class="gr-hero-sub">Compare counties and metrics over time. Use the sidebar to explore.</p>
           <div class="pill-row">
             <span class="pill"><span class="dot"></span><b>Rows</b>&nbsp;{len(data):,}</span>
             <span class="pill"><span class="dot dot2"></span><b>Date range</b>&nbsp;{min_date} → {max_date}</span>
@@ -446,7 +446,7 @@ try:
         unsafe_allow_html=True,
     )
     st.markdown("<div style='height: 0.9rem;'></div>", unsafe_allow_html=True)
-    # --- end hero ---
+    # hero end
 
     # sidebar filters
     all_counties = sorted(data["County_Name"].unique().tolist())
