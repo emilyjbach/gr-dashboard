@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 st.title("GR 237: General Relief")
-st.caption("Emily Bach Draft")
+st.caption("Emily Bach to do: stylize, update plan, res a.1. filepath for 2020+ in some counties, res * data q")
 
 # files
 
