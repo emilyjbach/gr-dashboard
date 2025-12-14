@@ -2,21 +2,19 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 import os
-import re 
+import re
+from datetime import date 
 
 # --- Helper Function for Custom Metric Sorting ---
 def metric_sort_key(metric_name):
     """
     Custom key function to sort metrics in bureaucratic order (e.g., A. 1., A. 2., B. 6.)
-    It extracts the main section letter and any subsequent numbers.
     """
-    # Regex to capture the main letter (e.g., 'A', 'B') and the primary number (e.g., '1', '6')
-    # It attempts to be flexible with the separators (space or dot)
     match = re.match(r'([A-E])[\.\s]*(\d+(\.\d+)?)?', metric_name)
     
     if match:
-        main_letter = match.group(1) # 'A', 'B', 'C', etc.
-        main_number_str = match.group(2) # '1', '6', '6a', etc.
+        main_letter = match.group(1)
+        main_number_str = match.group(2)
         
         primary_sort = main_letter
         secondary_sort = 0
@@ -28,7 +26,6 @@ def metric_sort_key(metric_name):
             except ValueError:
                 secondary_sort = 999 
         
-        # Handle sub-section letters like 'a' and 'b' (e.g., B. 6a vs B. 6b)
         if 'a.' in metric_name or 'a ' in metric_name:
             tertiary_sort = 1
         elif 'b.' in metric_name or 'b ' in metric_name:
@@ -36,9 +33,8 @@ def metric_sort_key(metric_name):
             
         return (primary_sort, secondary_sort, tertiary_sort)
     
-    # Handle specific exceptions and uncategorized items
     if metric_name == "E. Net General Relief Expenditure":
-        return ('E', 999, 0) # Ensures E is the final letter section
+        return ('E', 999, 0)
     if metric_name in ["Date_Code", "County_Name", "County_Code", "Report_Month"]:
         return ('@', 0, 0) 
     
@@ -146,7 +142,7 @@ def prepare_and_combine_gr_data(file_names):
             df = df[df["County_Name"] != "Statewide"].copy()
             df = df.dropna(subset=['County_Name'])
             
-            # 1. Ensure County_Name is always a string (fixes TypeError on sorted())
+            # 1. Ensure County_Name is always a string
             df['County_Name'] = df['County_Name'].astype(str)
             
             # 2. Filter out rows where County_Name is purely numeric/looks like a number
@@ -223,6 +219,39 @@ metric_categories = sorted(metric_categories, key=metric_sort_key)
 # sidebar filters
 st.sidebar.header("Filter Options")
 
+# Date Range Filter 
+min_date = data['Date'].min().to_pydatetime().date() if not data.empty else date(2015, 1, 1)
+max_date = data['Date'].max().to_pydatetime().date() if not data.empty else date(2025, 12, 31)
+
+# Default range focused on 2017-2019 for verification
+default_start = date(2017, 1, 1)
+default_end = date(2019, 12, 31)
+
+# Set the slider value within the actual min/max data range
+start_date = max(min_date, default_start)
+end_date = min(max_date, default_end)
+
+# If the loaded data is entirely outside the 2017-2019 window, adjust the default value
+if max_date < default_start or min_date > default_end:
+    start_date = min_date
+    end_date = max_date
+
+
+date_range = st.sidebar.slider(
+    "Select Date Range (Defaults to 2017-2019):",
+    min_value=min_date,
+    max_value=max_date,
+    value=(start_date, end_date),
+    format="YYYY/MM/DD"
+)
+
+# Apply Date Filter to the data
+data_dated = data[
+    (data['Date'].dt.date >= date_range[0]) & 
+    (data['Date'].dt.date <= date_range[1])
+].copy()
+
+
 # county
 selected_counties = st.sidebar.multiselect(
     "Select County(s):",
@@ -237,7 +266,7 @@ selected_counties = st.sidebar.multiselect(
 st.sidebar.subheader("Select Metric(s) to Overlay")
 selected_metrics = st.sidebar.multiselect(
     "Select Metric(s):",
-    options=metric_categories, # This is now custom sorted
+    options=metric_categories,
     default=[
         "B. 6. Total General Relief Cases", 
     ]
@@ -247,21 +276,21 @@ selected_metrics = st.sidebar.multiselect(
 st.title("GR 237: General Relief")
 st.markdown("Use the sidebar filters to compare multiple counties and multiple metrics on the chart below.")
 
-# data filtering
+# data filtering: APPLY FILTERS TO THE DATE-FILTERED DATA
 if not selected_counties or not selected_metrics:
     st.info("Please select at least one county and one metric from the sidebar.")
     st.stop()
 
-df_filtered = data[
-    data['County_Name'].isin(selected_counties) &
-    data['Metric'].isin(selected_metrics)
+df_filtered = data_dated[
+    data_dated['County_Name'].isin(selected_counties) &
+    data_dated['Metric'].isin(selected_metrics)
 ].copy()
 
 df_filtered = df_filtered.dropna(subset=['Value'])
 
 # viz
 if df_filtered.empty:
-    st.warning("No data found for the selected combination of counties and metrics.")
+    st.warning("No data found for the selected combination of counties, metrics, and date range.")
 else:
     df_filtered['County_Metric'] = df_filtered['County_Name'] + ' - ' + df_filtered['Metric']
     y_title = "Value (Cases, Persons, or Expenditures)"
@@ -272,22 +301,19 @@ else:
         color='County_Metric',
         tooltip=['Report_Month', 'County_Name', 'Metric', alt.Tooltip('Value', format=',.0f')]
     ).properties(
-        title="Interactive GR Database [EB DRAFT]"
+        title=f"Interactive GR Database: {date_range[0].strftime('%Y/%m/%d')} to {date_range[1].strftime('%Y/%m/%d')}"
     ).interactive() 
 
     line_chart = base.mark_line(point=True)
 
     st.altair_chart(line_chart, use_container_width=True)
 
-# --- NEW SECTION: UNDERLYING DATA ---
+# --- UNDERLYING DATA ---
 st.markdown("---")
 st.subheader("📊 Underlying Filtered Data")
 
-# Drop the combined County_Metric column for cleaner display
 df_display = df_filtered.drop(columns=['County_Metric']).copy()
 
-# Rename columns for clarity in the raw table
 df_display.rename(columns={'Value': 'Value (Cases/Persons/Amount)'}, inplace=True)
 
 st.dataframe(df_display)
-# --- END NEW SECTION ---
