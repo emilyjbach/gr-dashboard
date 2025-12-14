@@ -538,7 +538,7 @@ try:
     st.markdown("---")
     st.markdown("<h3 style='margin-bottom: 0.2rem;'>🧾 Underlying Data</h3>", unsafe_allow_html=True)
     st.caption("Tip: Columns are sortable. This is likely most helpful for multi-county or multi-metric reports.")
-    st.caption("The leftmost column represents the row number of the data point, ordered in the total list of chronological data sets."
+    st.caption("The leftmost column represents the row number of the data point, ordered in the total list of chronological data sets.")
     st.dataframe(df.drop(columns=["Series"], errors="ignore"))
 
 except Exception as e:
