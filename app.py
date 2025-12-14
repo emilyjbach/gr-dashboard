@@ -147,6 +147,22 @@ def prepare_and_combine_gr_data(file_names):
 # run data combination 
 data = prepare_and_combine_gr_data(GR_FILE_NAMES)
 
+# --- ADD THIS DEBUGGING BLOCK ---
+st.header("🔍 DEBUGGING DATA STATE")
+st.code(f"Is data empty? {data.empty}")
+
+if data.empty:
+    st.error("The combined DataFrame is empty. Check if all CSV files are present and readable.")
+    st.stop()
+else:
+    st.code(f"Total rows: {len(data)}")
+    st.code(f"Columns: {data.columns.tolist()}")
+    if 'County_Name' not in data.columns:
+        st.error("FATAL: The 'County_Name' column is missing! Check the column_index_map in the data prep function.")
+    else:
+        st.dataframe(data.head())
+# --- END DEBUGGING BLOCK ---
+
 if data.empty:
     st.stop()
 
