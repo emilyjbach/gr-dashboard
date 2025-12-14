@@ -150,6 +150,18 @@ def prepare_and_combine_gr_data(file_names):
 # run data combination 
 data = prepare_and_combine_gr_data(GR_FILE_NAMES)
 
+# TEMPORARY DEBUGGING BLOCK START
+st.subheader("DEBUG: Data Frame Status")
+st.write(f"Is data empty? {data.empty}")
+if not data.empty:
+    st.write(f"Data columns: {data.columns.tolist()}")
+    st.dataframe(data.head()) # Show first 5 rows
+# TEMPORARY DEBUGGING BLOCK END
+
+if data.empty:
+    st.stop()
+# ... rest of your code ...
+
 if data.empty:
     st.stop()
 
