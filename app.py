@@ -6,7 +6,7 @@ from datetime import date
 from pathlib import Path
 from typing import Optional, Tuple
 
-# Altair silently truncates datasets > 5000 rows unless disabled
+# Altair silently truncates >5000 rows unless disabled
 alt.data_transformers.disable_max_rows()
 
 st.set_page_config(
@@ -15,10 +15,21 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Render *something* immediately so a crash doesn't look like a blank page
+st.title("GR 237: General Relief")
+st.caption("If something breaks, toggle the debug log in the sidebar to see exactly why.")
+
+# ----------------------------
+# Sidebar
+# ----------------------------
+with st.sidebar:
+    st.header("Filter Options")
+    show_debug = st.checkbox("Show debug log", value=True)
+
 # ----------------------------
 # Metric sorting
 # ----------------------------
-def metric_sort_key(metric_name: str):
+def metric_sort_key(metric_name):
     name = str(metric_name)
     m = re.match(r"^\s*([A-E])", name)
     letter = m.group(1) if m else "Z"
@@ -49,19 +60,8 @@ GR_FILE_NAMES = [
     "24-25.csv",
 ]
 
-BASE_DIR = Path(__file__).resolve().parent
-CANDIDATE_DIRS = [BASE_DIR, BASE_DIR / "data"]
-
-def resolve_path(fname: str) -> Optional[Path]:
-    for d in CANDIDATE_DIRS:
-        p = d / fname
-        if p.exists():
-            return p
-    return None
-
 # ----------------------------
-# Canonical metric order for GR237
-# (maps numbered columns 1..N by position after fixed front fields)
+# Canonical metric order (maps “remaining columns” by position)
 # ----------------------------
 METRICS_IN_ORDER = [
     "A. Adjustment",
@@ -96,128 +96,93 @@ METRICS_IN_ORDER = [
 ]
 
 # ----------------------------
-# Robust header detection (works for 20-21 .. 24-25 too)
-#
-# Why your 20-21+ failed:
-# Those files often DON'T have the header row exactly "Date,Month,Year,County..."
-# Sometimes it's "Report Month, County Name, ..." or has leading blanks / different ordering.
-#
-# Strategy:
-# 1) Read a probe as raw rows (engine="python") to handle multiline quoted headers.
-# 2) Score each row based on presence of key header tokens anywhere in the row.
-# 3) Pick the best-scoring row if it contains BOTH a county token and a date/month token.
-# 4) If that fails, brute-force try header positions 0..30 and pick the first that yields expected columns.
+# Path resolution (GitHub/Streamlit Cloud-friendly)
 # ----------------------------
-HEADER_TOKENS_DATE = {
-    "date", "date_code", "date code", "report_month", "report month", "month", "year"
-}
-HEADER_TOKENS_COUNTY = {
-    "county", "county_name", "county name", "county_code", "county code"
-}
-HEADER_TOKENS_OTHER = {"sfy", "ffy"}
+def get_base_dir() -> Path:
+    # __file__ exists in normal streamlit runs; fallback to cwd just in case
+    try:
+        return Path(__file__).resolve().parent
+    except Exception:
+        return Path.cwd()
 
-def _norm_cell(x) -> str:
-    if pd.isna(x):
+BASE_DIR = get_base_dir()
+CANDIDATE_DIRS = [BASE_DIR, BASE_DIR / "data"]
+
+def resolve_path(fname: str) -> Optional[Path]:
+    for d in CANDIDATE_DIRS:
+        p = d / fname
+        if p.exists():
+            return p
+    return None
+
+# ----------------------------
+# Header detection that works for 20-21..24-25
+# - brute-force try header rows 0..80 (fast: nrows=1)
+# - score the column names for county + date/month tokens
+# ----------------------------
+def _norm(x) -> str:
+    if x is None:
         return ""
     return str(x).strip().lstrip("\ufeff").strip().lower()
 
-def detect_header_row_by_scoring(path: Path, max_probe_rows: int = 250) -> Optional[int]:
-    try:
-        probe = pd.read_csv(path, header=None, engine="python", nrows=max_probe_rows)
-    except Exception:
-        return None
+def score_columns(cols) -> int:
+    ncols = [_norm(c) for c in cols]
+    joined = " ".join(ncols)
 
-    best_i = None
+    score = 0
+    if "county" in joined:
+        score += 5
+    if ("date" in joined) or ("report month" in joined) or ("report_month" in joined):
+        score += 4
+    if "month" in joined:
+        score += 2
+    if "year" in joined:
+        score += 2
+    if "sfy" in joined:
+        score += 1
+    if "ffy" in joined:
+        score += 1
+
+    # bonus if we see many numeric-ish headers like 1,2,3...
+    numlike = 0
+    for c in ncols:
+        if re.fullmatch(r"\d+", c):
+            numlike += 1
+    if numlike >= 5:
+        score += 2
+
+    return score
+
+def find_best_header_row(path: Path, max_h: int = 80) -> Optional[int]:
+    best_h = None
     best_score = -1
-
-    for i in range(len(probe)):
-        row = probe.iloc[i].tolist()
-        cells = [_norm_cell(c) for c in row]
-        cellset = set([c for c in cells if c])
-
-        # Presence checks (any match, not exact position)
-        has_county = any(any(tok in c for tok in ["county"]) for c in cellset) or any(c in HEADER_TOKENS_COUNTY for c in cellset)
-        has_dateish = any(c in HEADER_TOKENS_DATE for c in cellset) or any("report" in c and "month" in c for c in cellset)
-
-        # Score: count exact token hits + useful signals
-        score = 0
-        score += sum(1 for c in cellset if c in HEADER_TOKENS_DATE)
-        score += sum(1 for c in cellset if c in HEADER_TOKENS_COUNTY)
-        score += sum(1 for c in cellset if c in HEADER_TOKENS_OTHER)
-
-        # Bonus: if row contains a run of numeric column headers like 1,2,3...
-        numlike = 0
-        for c in cellset:
-            if re.fullmatch(r"\d+", c):
-                numlike += 1
-        if numlike >= 5:
-            score += 2
-
-        # Only consider rows that look like a header row (must contain county + date-ish)
-        if has_county and has_dateish and score > best_score:
-            best_score = score
-            best_i = i
-
-    return best_i
-
-def _looks_like_expected_columns(cols) -> bool:
-    normed = [_norm_cell(c) for c in cols]
-    joined = " ".join(normed)
-    # we need a county column and some date/month indicator
-    has_county = ("county" in joined)
-    has_dateish = ("date" in joined) or ("report month" in joined) or ("report_month" in joined) or ("month" in joined)
-    return has_county and has_dateish
-
-def read_gr_file(path: Path) -> Tuple[Optional[pd.DataFrame], str]:
-    base = path.name
-
-    header_row = detect_header_row_by_scoring(path)
-    if header_row is not None:
+    for h in range(0, max_h + 1):
         try:
-            df = pd.read_csv(path, header=header_row, engine="python")
-            # normalize
-            df = normalize_columns(df)
-            if "County_Name" in df.columns and ("Date_Code" in df.columns or "Report_Month" in df.columns or ("Month" in df.columns and "Year" in df.columns)):
-                return df, f"{base}: header row {header_row}"
-        except Exception:
-            pass  # fall through to brute force
-
-    # Brute-force fallback: try header rows 0..30 and pick first that yields expected columns
-    for h in range(0, 31):
-        try:
-            df_try = pd.read_csv(path, header=h, engine="python")
-            if _looks_like_expected_columns(df_try.columns):
-                df_try = normalize_columns(df_try)
-                return df_try, f"{base}: header row {h} (fallback scan)"
+            df1 = pd.read_csv(path, header=h, engine="python", nrows=1)
+            s = score_columns(df1.columns)
+            if s > best_score:
+                best_score = s
+                best_h = h
         except Exception:
             continue
 
-    return None, f"{base}: could not find header row (scored + fallback scan failed)"
+    # Require at least county + some date/month signal
+    if best_h is None or best_score < 7:
+        return None
+    return best_h
 
-# ----------------------------
-# Column normalization (handles different year formats)
-# ----------------------------
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     rename_map = {}
-
     for c in df.columns:
-        cn = str(c).strip().lstrip("\ufeff").strip()
-
-        low = cn.lower()
-
-        # Date
-        if low == "date" or low == "date_code" or low == "date code":
+        low = _norm(c)
+        if low in ("date", "date_code", "date code"):
             rename_map[c] = "Date_Code"
-        elif low in ("report_month", "report month", "reportmonth"):
+        elif low in ("report month", "report_month", "reportmonth"):
             rename_map[c] = "Report_Month"
-
-        # County name/code
-        elif low in ("county", "county_name", "county name"):
+        elif low in ("county", "county name", "county_name", "countyname"):
             rename_map[c] = "County_Name"
-        elif low in ("county_code", "county code"):
+        elif low in ("county code", "county_code", "countycode"):
             rename_map[c] = "County_Code"
-
-        # Month/Year/SFY/FFY (when present)
         elif low == "month":
             rename_map[c] = "Month"
         elif low == "year":
@@ -229,31 +194,44 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
     df = df.rename(columns=rename_map)
 
-    # Some exports have "County Name " with extra spaces etc. Try soft matching if still missing.
+    # Soft matches if still missing
     if "County_Name" not in df.columns:
         for c in df.columns:
-            if "county" in _norm_cell(c) and "name" in _norm_cell(c):
+            if "county" in _norm(c) and "name" in _norm(c):
                 df = df.rename(columns={c: "County_Name"})
                 break
         if "County_Name" not in df.columns:
             for c in df.columns:
-                if _norm_cell(c) == "county":
+                if _norm(c) == "county":
                     df = df.rename(columns={c: "County_Name"})
                     break
 
     if "Date_Code" not in df.columns and "Report_Month" not in df.columns:
         for c in df.columns:
-            if _norm_cell(c) in ("date", "date_code", "date code"):
-                df = df.rename(columns={c: "Date_Code"})
-                break
-            if "report" in _norm_cell(c) and "month" in _norm_cell(c):
+            if "report" in _norm(c) and "month" in _norm(c):
                 df = df.rename(columns={c: "Report_Month"})
+                break
+            if _norm(c) in ("date", "date_code", "date code"):
+                df = df.rename(columns={c: "Date_Code"})
                 break
 
     return df
 
+def read_gr_file(path: Path) -> Tuple[Optional[pd.DataFrame], str]:
+    h = find_best_header_row(path)
+    if h is None:
+        return None, f"{path.name}: could not find a plausible header row (scan 0–80)"
+
+    try:
+        df = pd.read_csv(path, header=h, engine="python")
+    except Exception as e:
+        return None, f"{path.name}: failed read at header={h} ({e})"
+
+    df = normalize_columns(df)
+    return df, f"{path.name}: header={h}"
+
 # ----------------------------
-# Date building (robust)
+# Date parsing (old + new)
 # ----------------------------
 def parse_date_series(s: pd.Series) -> pd.Series:
     s = s.astype(str).str.strip()
@@ -264,14 +242,14 @@ def parse_date_series(s: pd.Series) -> pd.Series:
     # Jul15 / Aug21 style
     out = out.fillna(pd.to_datetime(s.str.upper(), format="%b%y", errors="coerce"))
 
-    # Numeric YYYYMM
+    # Numeric YYYYMM (202007)
     num = pd.to_numeric(s, errors="coerce")
     idx = num.dropna().index
     if len(idx) > 0:
         yyyymm = num.loc[idx].astype(int).astype(str)
         out.loc[idx] = out.loc[idx].fillna(pd.to_datetime(yyyymm, format="%Y%m", errors="coerce"))
 
-    # Common string formats
+    # Common newer formats
     for fmt in ("%Y-%m", "%Y-%m-%d", "%m/%Y", "%m/%d/%Y", "%b %Y", "%B %Y"):
         out = out.fillna(pd.to_datetime(s, format=fmt, errors="coerce"))
 
@@ -280,19 +258,14 @@ def parse_date_series(s: pd.Series) -> pd.Series:
     return out
 
 def build_date(df: pd.DataFrame) -> pd.Series:
-    # Prefer Date_Code
     if "Date_Code" in df.columns:
         d = parse_date_series(df["Date_Code"])
         if d.notna().any():
             return d
-
-    # Then Report_Month (common in newer years)
     if "Report_Month" in df.columns:
         d = parse_date_series(df["Report_Month"])
         if d.notna().any():
             return d
-
-    # Then Month+Year
     if "Month" in df.columns and "Year" in df.columns:
         month = pd.to_numeric(df["Month"], errors="coerce")
         year = pd.to_numeric(df["Year"], errors="coerce")
@@ -302,5 +275,207 @@ def build_date(df: pd.DataFrame) -> pd.Series:
             mm = month[ok].astype(int).astype(str).str.zfill(2)
             yy = year[ok].astype(int).astype(str)
             d.loc[ok] = pd.to_datetime(yy + "-" + mm + "-01", errors="coerce")
-        if d.notna().any():
-            retur
+        return d
+    return pd.Series(pd.NaT, index=df.index)
+
+# ----------------------------
+# Cached load/combine
+# ----------------------------
+@st.cache_data
+def load_all(files):
+    logs = []
+    frames = []
+    county_has_letter = re.compile(r"[A-Za-z]")
+
+    for fname in files:
+        path = resolve_path(fname)
+        if path is None:
+            logs.append(f"{fname}: missing (put it next to app.py or in ./data/)")
+            continue
+
+        df, info = read_gr_file(path)
+        if df is None or df.empty:
+            logs.append(info)
+            continue
+
+        if "County_Name" not in df.columns:
+            logs.append(f"{fname}: missing County_Name after read")
+            continue
+
+        # county cleanup: must contain at least one letter
+        df["County_Name"] = df["County_Name"].astype(str).str.strip()
+        df = df[df["County_Name"] != "Statewide"].copy()
+        df = df.dropna(subset=["County_Name"]).copy()
+        df = df[df["County_Name"].apply(lambda x: bool(county_has_letter.search(x)))].copy()
+        if df.empty:
+            logs.append(f"{fname}: empty after county filtering")
+            continue
+
+        # Date
+        df["Date"] = build_date(df)
+        df = df.dropna(subset=["Date"]).copy()
+        if df.empty:
+            logs.append(f"{fname}: no parsable dates (Date_Code/Report_Month/Month+Year)")
+            continue
+
+        # Map metric columns by position after front fields
+        known_front = [c for c in ["Date_Code", "Report_Month", "Month", "Year", "County_Name", "County_Code", "SFY", "FFY"] if c in df.columns]
+        rest_cols = [c for c in df.columns if c not in known_front]
+
+        rename_metrics = {}
+        for j, c in enumerate(rest_cols):
+            if j < len(METRICS_IN_ORDER):
+                rename_metrics[c] = METRICS_IN_ORDER[j]
+        df = df.rename(columns=rename_metrics)
+
+        metric_cols = [c for c in METRICS_IN_ORDER if c in df.columns]
+        if not metric_cols:
+            logs.append(f"{fname}: no metric columns recognized after mapping")
+            continue
+
+        for c in metric_cols:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+
+        df = df.dropna(subset=metric_cols, how="all").copy()
+        if df.empty:
+            logs.append(f"{fname}: all metric values empty after numeric coercion")
+            continue
+
+        # Long format
+        id_vars = ["Date", "County_Name"]
+        if "County_Code" in df.columns:
+            id_vars.append("County_Code")
+        if "SFY" in df.columns:
+            id_vars.append("SFY")
+        if "FFY" in df.columns:
+            id_vars.append("FFY")
+
+        df_long = pd.melt(
+            df,
+            id_vars=id_vars,
+            value_vars=metric_cols,
+            var_name="Metric",
+            value_name="Value",
+        ).dropna(subset=["Value"]).copy()
+
+        frames.append(df_long)
+        logs.append(
+            info
+            + f" | long_rows={len(df_long):,}"
+            + " | "
+            + str(df["Date"].min().date())
+            + " → "
+            + str(df["Date"].max().date())
+        )
+
+    if not frames:
+        return pd.DataFrame(), logs
+
+    combined = pd.concat(frames, ignore_index=True)
+    combined = combined.sort_values("Date").reset_index(drop=True)
+    combined = combined.drop_duplicates(subset=["Date", "County_Name", "Metric"], keep="first")
+    return combined, logs
+
+# ----------------------------
+# MAIN (wrapped so errors show, not blank)
+# ----------------------------
+try:
+    # Preflight list of files found
+    found = []
+    missing = []
+    for f in GR_FILE_NAMES:
+        if resolve_path(f) is None:
+            missing.append(f)
+        else:
+            found.append(f)
+
+    with st.expander("Preflight (files found / missing)", expanded=show_debug):
+        st.write("**Found:**", found)
+        st.write("**Missing:**", missing)
+        st.write("Looking in:", [str(d) for d in CANDIDATE_DIRS])
+
+    data, logs = load_all(GR_FILE_NAMES)
+
+    if show_debug:
+        with st.expander("Debug log", expanded=True):
+            for l in logs:
+                st.write(l)
+
+    if data.empty:
+        st.error("No data loaded. Check the debug log above.")
+        st.stop()
+
+    min_date = data["Date"].min().date()
+    max_date = data["Date"].max().date()
+    st.write(f"**Loaded:** {len(data):,} rows • **Date range:** {min_date} → {max_date}")
+
+    # ----------------------------
+    # Sidebar filters (default END = max_date so it shows through 2025 automatically)
+    # ----------------------------
+    all_counties = sorted(data["County_Name"].unique().tolist())
+    metrics = sorted(data["Metric"].unique().tolist(), key=metric_sort_key)
+
+    with st.sidebar:
+        default_start = max(min_date, date(2017, 1, 1))
+        default_end = max_date  # THIS is what makes it show through 2025
+        date_range = st.slider(
+            "Date Range",
+            min_value=min_date,
+            max_value=max_date,
+            value=(default_start, default_end),
+            format="YYYY/MM/DD",
+        )
+
+        selected_counties = st.multiselect(
+            "Counties",
+            options=all_counties,
+            default=[c for c in ["Alameda", "Fresno"] if c in all_counties] or all_counties[:2],
+        )
+
+        selected_metrics = st.multiselect(
+            "Metrics",
+            options=metrics,
+            default=["B. 6. Total General Relief Cases"]
+            if "B. 6. Total General Relief Cases" in metrics
+            else metrics[:1],
+        )
+
+    # Filter data
+    data_dated = data[
+        (data["Date"].dt.date >= date_range[0]) &
+        (data["Date"].dt.date <= date_range[1])
+    ].copy()
+
+    df = data_dated[
+        data_dated["County_Name"].isin(selected_counties) &
+        data_dated["Metric"].isin(selected_metrics)
+    ].dropna(subset=["Value"]).copy()
+
+    if df.empty:
+        st.warning("No data for the selected filters.")
+        st.stop()
+
+    df["Series"] = df["County_Name"] + " - " + df["Metric"]
+
+    # Chart
+    chart = alt.Chart(df).mark_line(point=True).encode(
+        x=alt.X("Date:T", axis=alt.Axis(title="Report Month", format="%b %Y")),
+        y=alt.Y("Value:Q", scale=alt.Scale(zero=False), title="Value"),
+        color=alt.Color("Series:N"),
+        tooltip=[
+            alt.Tooltip("County_Name:N"),
+            alt.Tooltip("Metric:N"),
+            alt.Tooltip("Date:T", format="%b %Y"),
+            alt.Tooltip("Value:Q", format=",.0f"),
+        ],
+    ).interactive()
+
+    st.altair_chart(chart, use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("Underlying Data")
+    st.dataframe(df.drop(columns=["Series"], errors="ignore"))
+
+except Exception as e:
+    st.error("The app crashed (this is why it looked blank). Here’s the full error:")
+    st.exception(e)
