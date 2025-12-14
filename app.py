@@ -113,7 +113,7 @@ st.markdown(
 # end styling
 
 st.title("General Relief")
-st.caption("Emily Bach to do: stylize, update plan, res a.1. filepath for 2020+ in some counties, res * data q")
+st.caption("Emily Bach (dev & viz), CDSS (data)")
 
 # files
 
