@@ -434,8 +434,8 @@ try:
     st.markdown(
         f"""
         <div class="gr-hero">
-          <div class="gr-hero-title">Interactive Trends in GR 237 - General Relief and Interim Assistance to Applicants for SSI/SSP Monthly Caseload and Expenditure Statistical Report</div>
-          <p class="gr-hero-sub">Compare counties and metrics over time. Use the sidebar to explore.</p>
+          <div class="gr-hero-title">GR 237 - General Relief and Interim Assistance to Applicants for SSI/SSP Monthly Caseload and Expenditure Statistical Report</div>
+          <p class="gr-hero-sub">Source Data: https://www.cdss.ca.gov/inforesources/research-and-data/disability-adult-programs-data-tables/gr-237</p>
           <div class="pill-row">
             <span class="pill"><span class="dot"></span><b>Rows</b>&nbsp;{len(data):,}</span>
             <span class="pill"><span class="dot dot2"></span><b>Date range</b>&nbsp;{min_date} → {max_date}</span>
