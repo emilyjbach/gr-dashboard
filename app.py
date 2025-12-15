@@ -18,17 +18,17 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-      # layout
+      /* layout type */
       .block-container { padding-top: 1.1rem; padding-bottom: 2.6rem; max-width: 1220px; }
       h1 { letter-spacing: -0.03em; margin-bottom: 0.15rem; }
       [data-testid="stCaptionContainer"] { margin-top: 0.2rem; opacity: 0.85; }
 
-      # sidebar
+      /* sidebar */
       section[data-testid="stSidebar"] { border-right: 1px solid rgba(49,51,63,0.12); }
       section[data-testid="stSidebar"] .block-container { padding-top: 1.2rem; }
       section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 { letter-spacing: -0.02em; }
 
-        / * top hero card * /
+      /* top hero card */
       .gr-hero {
         position: relative;
         overflow: hidden;
@@ -68,7 +68,7 @@ st.markdown(
         margin: 0;
       }
 
-      # pills
+      /* pills */
       .pill-row { margin-top: 0.8rem; display: flex; flex-wrap: wrap; gap: 10px; }
       .pill {
         display: inline-flex;
@@ -91,20 +91,20 @@ st.markdown(
       .dot2 { background: linear-gradient(135deg, rgba(255,97,165,0.95), rgba(255,184,107,0.9)); }
       .dot3 { background: linear-gradient(135deg, rgba(0,209,255,0.9), rgba(57,255,20,0.55)); }
 
-     
+      /* datafrm + expander spacing */
       [data-testid="stDataFrame"] { border-radius: 14px; overflow: hidden; }
       details { border-radius: 14px; }
 
-     
+      /* make buttons/toggles feel more modern */
       .stButton button, .stDownloadButton button {
         border-radius: 12px !important;
         padding: 0.45rem 0.9rem !important;
       }
 
-     
+      /* subheadr */
       h2, h3 { letter-spacing: -0.02em; }
 
-     
+      /* divs */
       hr { margin: 1.35rem 0; opacity: 0.45; }
     </style>
     """,
