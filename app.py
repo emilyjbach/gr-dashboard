@@ -1,7 +1,7 @@
 import re
 from datetime import date
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Optional
 
 import altair as alt
 import pandas as pd
@@ -15,7 +15,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# files
 GR_FILE_NAMES = [
     "15-16.csv",
     "16-17.csv",
@@ -29,7 +28,6 @@ GR_FILE_NAMES = [
     "24-25.csv",
 ]
 
-# metrics
 METRICS_IN_ORDER = [
     "A. Adjustment",
     "A. 1. Cases brought forward",
@@ -62,25 +60,10 @@ METRICS_IN_ORDER = [
     "E. Net General Relief Expenditure",
 ]
 
-# sidebar setup
 with st.sidebar:
     st.header("Filter Options")
     show_debug = st.checkbox("Show debug log", value=False)
 
-# helpers
-def metric_sort_key(metric_name: str):
-    name = str(metric_name)
-    m = re.match(r"^\s*([A-E])", name)
-    letter = m.group(1) if m else "Z"
-    n = re.search(r"(\d+)", name)
-    number = int(n.group(1)) if n else 0
-    sub = 0
-    lower = name.lower()
-    if "a." in lower or " a " in lower:
-        sub = 1
-    elif "b." in lower or " b " in lower:
-        sub = 2
-    return (letter, number, sub)
 
 def base_dir() -> Path:
     try:
@@ -88,8 +71,10 @@ def base_dir() -> Path:
     except Exception:
         return Path.cwd()
 
+
 BASE_DIR = base_dir()
 CANDIDATE_DIRS = [BASE_DIR, BASE_DIR / "data"]
+
 
 def resolve_path(fname: str) -> Optional[Path]:
     for d in CANDIDATE_DIRS:
@@ -98,16 +83,16 @@ def resolve_path(fname: str) -> Optional[Path]:
             return p
     return None
 
+
 def norm_col(x) -> str:
     return str(x).strip().lstrip("\ufeff").strip()
+
 
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     drop_cols = []
     for c in df.columns:
         s = norm_col(c)
-        if s == "" or s.lower().startswith("unnamed"):
-            drop_cols.append(c)
-        elif s.strip() == "":
+        if s == "" or s.lower().startswith("unnamed") or s.strip() == "":
             drop_cols.append(c)
     if drop_cols:
         df = df.drop(columns=drop_cols, errors="ignore")
@@ -134,6 +119,7 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
     return df.rename(columns=rename_map)
 
+
 def parse_date_series(s: pd.Series) -> pd.Series:
     s = s.astype(str).str.strip()
     s = s.str.replace(r"\.0$", "", regex=True)
@@ -155,6 +141,7 @@ def parse_date_series(s: pd.Series) -> pd.Series:
 
     out = out.fillna(pd.to_datetime(s, errors="coerce"))
     return out
+
 
 def build_date(df: pd.DataFrame) -> pd.Series:
     if "Date_Code" in df.columns:
@@ -179,6 +166,7 @@ def build_date(df: pd.DataFrame) -> pd.Series:
         return d
 
     return pd.Series(pd.NaT, index=df.index)
+
 
 def read_gr_csv(path: Path, logs: list[str]) -> Optional[pd.DataFrame]:
     try:
@@ -208,7 +196,8 @@ def read_gr_csv(path: Path, logs: list[str]) -> Optional[pd.DataFrame]:
     logs.append(f"{path.name}: could not find usable header row")
     return None
 
-def map_metric_columns(df: pd.DataFrame, metrics_in_order: Sequence[str]) -> pd.DataFrame:
+
+def map_metric_columns(df: pd.DataFrame, metrics_in_order: list[str]) -> pd.DataFrame:
     rename = {}
     for c in df.columns:
         s = norm_col(c)
@@ -221,6 +210,7 @@ def map_metric_columns(df: pd.DataFrame, metrics_in_order: Sequence[str]) -> pd.
     if rename:
         df = df.rename(columns=rename)
     return df
+
 
 @st.cache_data
 def load_all(files: list[str], metrics_in_order_key: tuple[str, ...]):
@@ -307,6 +297,7 @@ def load_all(files: list[str], metrics_in_order_key: tuple[str, ...]):
         subset=["Date", "County_Name", "Metric"], keep="first"
     )
     return combined, logs
+
 
 st.markdown(
     """
@@ -435,8 +426,6 @@ try:
 
     present_metrics = data["Metric"].dropna().astype(str).unique().tolist()
     metrics = [m for m in METRICS_IN_ORDER if m in present_metrics]
-    extras = [m for m in present_metrics if m not in set(metrics)]
-    metrics = metrics + sorted(extras, key=metric_sort_key)
 
     with st.sidebar:
         default_start = max(min_date, date(2017, 1, 1))
@@ -575,8 +564,6 @@ try:
     st.caption(
         "Where a zero appears in a data set, a zero value is recorded on the graph or underlying data."
     )
-
-    
 
 except Exception as e:
     st.error("The app crashed. Here’s the full error (so it won’t look like a blank page):")
