@@ -62,6 +62,15 @@ METRICS_IN_ORDER = [
     "E. Net General Relief Expenditure",
 ]
 
+# Fix: Initialize the dictionary here so the code later on can find it.
+# Use this dictionary to map the official metric names (keys) to the shorter names
+# you want to display in the sidebar (values). The official names are required for sorting.
+METRIC_DISPLAY_NAMES = {
+    # Example Mappings (currently empty, which is fine):
+    # "A. 2. Cases added during month": "A. 2. Cases Added",
+    # "B. 6. Total GR Expenditure (Dollars)": "B. Total GR $"
+}
+
 
 # sidebar setup
 with st.sidebar:
@@ -227,6 +236,25 @@ def read_gr_csv(path: Path, logs: list[str]) -> Optional[pd.DataFrame]:
     logs.append(f"{path.name}: could not find usable header row")
     return None
 
+
+def map_metric_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    A.1. fix
+    """
+    rename = {}
+    for c in df.columns:
+        s = norm_col(c)
+        m = re.match(r"^(?:Cell\s*)?(\d+)$", s, flags=re.IGNORECASE)
+        if not m:
+            continue
+        n = int(m.group(1))
+        if 1 <= n <= len(METRICS_IN_ORDER):
+            rename[c] = METRICS_IN_ORDER[n - 1]
+    if rename:
+        df = df.rename(columns=rename)
+    return df
+
+
 @st.cache_data
 def load_all(files: list[str]):
     logs: list[str] = []
@@ -272,6 +300,7 @@ def load_all(files: list[str]):
 
         # a.1. fix r2
         logs.append(f"{fname}: Columns before mapping: {df.columns.tolist()}")
+        df = map_metric_columns(df)
 
         metric_cols = [m for m in METRICS_IN_ORDER if m in df.columns]
         if not metric_cols:
@@ -279,7 +308,7 @@ def load_all(files: list[str]):
                 f"{fname}: no metric columns recognized (expected 1..29 or Cell 1..29)"
             )
             continue
-            
+
         # num coerc
         for c in metric_cols:
             df[c] = pd.to_numeric(df[c], errors="coerce")
@@ -422,6 +451,12 @@ st.caption(
 try:
     data, logs = load_all(GR_FILE_NAMES)
 
+    # BEGIN CUSTOM METRIC NAME APPLICATION
+    # Rename the values in the 'Metric' column for display in the sidebar.
+    # This must be done after loading but before the sidebar is generated.
+    data["Metric"] = data["Metric"].replace(METRIC_DISPLAY_NAMES)
+    # END CUSTOM METRIC NAME APPLICATION
+
     if show_debug:
         with st.expander("Debug log", expanded=True):
             st.write("Looking in:", [str(d) for d in CANDIDATE_DIRS])
@@ -559,7 +594,7 @@ try:
 
     st.markdown("---")
     st.markdown(
-        "<h3 style='margin-bottom: 0.2rem;'>Underlying Data</h3>",
+        "<h3 style='margin-bottom: 0.2rem;'>🧾 Underlying Data</h3>",
         unsafe_allow_html=True,
     )
     st.caption(
@@ -570,7 +605,7 @@ try:
 
     st.markdown("---")
     st.markdown(
-            "<h3 style='margin-bottom: 0.2rem;'>Interpreting Data</h3>",
+            "<h3 style='margin-bottom: 0.2rem;'>👩‍💻 Interpreting Data</h3>",
             unsafe_allow_html=True,
     )
 
