@@ -49,7 +49,7 @@ METRICS_IN_ORDER = [
     "C. 7. Cases added during month",
     "C. 8. Total SSA checks disposed of",
     "C. 8a. Total SSA disposed in 1-10 days",
-    "C. 9. SSA sent SSI/SSP check directly to receipient",
+    "C. 9. SSA sent SSI/SSP check directly to recipient",
     "C. 10. Denial notice received",
     "D. 11. Reimbursements Cases",
     "D. 11a. SSA check received Cases",
@@ -74,7 +74,6 @@ def base_dir() -> Path:
 
 BASE_DIR = base_dir()
 CANDIDATE_DIRS = [BASE_DIR, BASE_DIR / "data"]
-
 
 def resolve_path(fname: str) -> Optional[Path]:
     for d in CANDIDATE_DIRS:
@@ -145,25 +144,25 @@ def parse_date_series(s: pd.Series) -> pd.Series:
 
 def build_date(df: pd.DataFrame) -> pd.Series:
     if "Date_Code" in df.columns:
-        d = parse_date_series(df["Date_Code"])
-        if d.notna().any():
-            return d
+        date = parse_date_series(df["Date_Code"])
+        if date.notna().any():
+            return date
 
     if "Report_Month" in df.columns:
-        d = parse_date_series(df["Report_Month"])
-        if d.notna().any():
-            return d
+        date = parse_date_series(df["Report_Month"])
+        if date.notna().any():
+            return date
 
     if "Month" in df.columns and "Year" in df.columns:
         month = pd.to_numeric(df["Month"], errors="coerce")
         year = pd.to_numeric(df["Year"], errors="coerce")
         ok = month.notna() & year.notna()
-        d = pd.Series(pd.NaT, index=df.index)
+        date = pd.Series(pd.NaT, index=df.index)
         if ok.any():
             mm = month[ok].astype(int).astype(str).str.zfill(2)
             yy = year[ok].astype(int).astype(str)
-            d.loc[ok] = pd.to_datetime(yy + "-" + mm + "-01", errors="coerce")
-        return d
+            date.loc[ok] = pd.to_datetime(yy + "-" + mm + "-01", errors="coerce")
+        return date
 
     return pd.Series(pd.NaT, index=df.index)
 
