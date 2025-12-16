@@ -535,7 +535,7 @@ try:
 
     st.markdown("---")
     st.markdown(
-        "<h3 style='margin-bottom: 0.2rem;'>🧾 Underlying Data</h3>",
+        "<h3 style='margin-bottom: 0.2rem;'>Underlying Data</h3>",
         unsafe_allow_html=True,
     )
     st.caption(
@@ -546,7 +546,7 @@ try:
 
     st.markdown("---")
     st.markdown(
-        "<h3 style='margin-bottom: 0.2rem;'>👩‍💻 Interpreting Data</h3>",
+        "<h3 style='margin-bottom: 0.2rem;'>Interpreting Data</h3>",
         unsafe_allow_html=True,
     )
 
@@ -575,6 +575,8 @@ try:
     st.caption(
         "Where a zero appears in a data set, a zero value is recorded on the graph or underlying data."
     )
+
+    
 
 except Exception as e:
     st.error("The app crashed. Here’s the full error (so it won’t look like a blank page):")
