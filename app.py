@@ -587,12 +587,13 @@ try:
             "<h3 style='margin-bottom: 0.2rem;'>👩‍💻 Interpreting Data</h3>",
             unsafe_allow_html=True,
     )
-st.caption(
-        "There are no strict rules for interpreting this data and local sources with a direct tie to impacted communities should be consulted for a full explanation of trends. The Roots Community Health Center, for example, prepared an **[excellent report](https://rootscommunityhealth.org/wp-content/uploads/2014/07/GA_eval_12.pdf)** utilizing and contextualizing data trends in Alameda County's GA Program."
+    
+    st.caption(
+        "There are no strict rules for interpreting this data and local sources with a direct tie to impacted communities should be consulted for a full explanation of trends. The Roots Community Health Center, for example, prepared an **[excellent report](https://rootscommunityhealth.org/wp-content/uploads/2014/07/GA_eval_12.pdf)** utilizing and contextualizing data trends in Alameda County's GA Program.",
+        unsafe_allow_html=True,
     )
     st.caption(
-        "The leftmost column represents the row number of the data point, ordered in the total list of chronological data sets."
-    )
+        "The leftmost column represents the row number of the data point, ordered in the total list of chronological data sets.")
 
 except Exception as e:
     st.error("The app crashed. Here’s the full error (so it won’t look like a blank page):")
