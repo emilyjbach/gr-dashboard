@@ -62,15 +62,6 @@ METRICS_IN_ORDER = [
     "E. Net General Relief Expenditure",
 ]
 
-# Fix: Initialize the dictionary here so the code later on can find it.
-# Use this dictionary to map the official metric names (keys) to the shorter names
-# you want to display in the sidebar (values). The official names are required for sorting.
-METRIC_DISPLAY_NAMES = {
-    # Example Mappings (currently empty, which is fine):
-    # "A. 2. Cases added during month": "A. 2. Cases Added",
-    # "B. 6. Total GR Expenditure (Dollars)": "B. Total GR $"
-}
-
 
 # sidebar setup
 with st.sidebar:
@@ -450,12 +441,6 @@ st.caption(
 
 try:
     data, logs = load_all(GR_FILE_NAMES)
-
-    # BEGIN CUSTOM METRIC NAME APPLICATION
-    # Rename the values in the 'Metric' column for display in the sidebar.
-    # This must be done after loading but before the sidebar is generated.
-    data["Metric"] = data["Metric"].replace(METRIC_DISPLAY_NAMES)
-    # END CUSTOM METRIC NAME APPLICATION
 
     if show_debug:
         with st.expander("Debug log", expanded=True):
