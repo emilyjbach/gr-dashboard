@@ -1,10 +1,11 @@
-import streamlit as st
-import pandas as pd
-import altair as alt
 import re
 from datetime import date
 from pathlib import Path
 from typing import Optional
+
+import altair as alt
+import pandas as pd
+import streamlit as st
 
 alt.data_transformers.disable_max_rows()
 
@@ -113,10 +114,11 @@ st.markdown(
 # end styling
 
 st.title("General Relief")
-st.caption("Emily Bach (Development, Visualization) | CDSS (Data) | Language: Python | Last Code Update: 12/14/2025 Last Data Pull: 12/12/2025")
+st.caption(
+    "Emily Bach (Development, Visualization) | CDSS (Data) | Language: Python | Last Code Update: 12/14/2025 Last Data Pull: 12/12/2025"
+)
 
 # files
-
 GR_FILE_NAMES = [
     "15-16.csv",
     "16-17.csv",
@@ -168,6 +170,7 @@ with st.sidebar:
     st.header("Filter Options")
     show_debug = st.checkbox("Show debug log", value=False)
 
+
 # helpers
 def metric_sort_key(metric_name: str):
     name = str(metric_name)
@@ -183,14 +186,17 @@ def metric_sort_key(metric_name: str):
         sub = 2
     return (letter, number, sub)
 
+
 def base_dir() -> Path:
     try:
         return Path(__file__).resolve().parent
     except Exception:
         return Path.cwd()
 
+
 BASE_DIR = base_dir()
 CANDIDATE_DIRS = [BASE_DIR, BASE_DIR / "data"]
+
 
 def resolve_path(fname: str) -> Optional[Path]:
     for d in CANDIDATE_DIRS:
@@ -199,8 +205,10 @@ def resolve_path(fname: str) -> Optional[Path]:
             return p
     return None
 
+
 def norm_col(x) -> str:
     return str(x).strip().lstrip("\ufeff").strip()
+
 
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     # drop spacer cols
@@ -237,6 +245,7 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
     return df.rename(columns=rename_map)
 
+
 def parse_date_series(s: pd.Series) -> pd.Series:
     s = s.astype(str).str.strip()
     s = s.str.replace(r"\.0$", "", regex=True)
@@ -251,7 +260,9 @@ def parse_date_series(s: pd.Series) -> pd.Series:
     idx = num.dropna().index
     if len(idx) > 0:
         yyyymm = num.loc[idx].astype(int).astype(str)
-        out.loc[idx] = out.loc[idx].fillna(pd.to_datetime(yyyymm, format="%Y%m", errors="coerce"))
+        out.loc[idx] = out.loc[idx].fillna(
+            pd.to_datetime(yyyymm, format="%Y%m", errors="coerce")
+        )
 
     # other randos
     for fmt in ("%Y-%m", "%Y-%m-%d", "%m/%Y", "%m/%d/%Y", "%b %Y", "%B %Y"):
@@ -260,6 +271,7 @@ def parse_date_series(s: pd.Series) -> pd.Series:
     # fin
     out = out.fillna(pd.to_datetime(s, errors="coerce"))
     return out
+
 
 def build_date(df: pd.DataFrame) -> pd.Series:
     # pref dat
@@ -288,11 +300,14 @@ def build_date(df: pd.DataFrame) -> pd.Series:
 
     return pd.Series(pd.NaT, index=df.index)
 
+
 def read_gr_csv(path: Path, logs: list[str]) -> Optional[pd.DataFrame]:
     try:
         df = pd.read_csv(path, header=4, engine="python")
         df = normalize_columns(df)
-        if "County_Name" in df.columns and ("Date_Code" in df.columns or "Report_Month" in df.columns):
+        if "County_Name" in df.columns and (
+            "Date_Code" in df.columns or "Report_Month" in df.columns
+        ):
             logs.append(f"{path.name}: read with header=4")
             return df
     except Exception as e:
@@ -303,7 +318,9 @@ def read_gr_csv(path: Path, logs: list[str]) -> Optional[pd.DataFrame]:
             df = pd.read_csv(path, header=h, engine="python")
             df = normalize_columns(df)
             cols = " ".join([norm_col(c).lower() for c in df.columns])
-            if ("county" in cols) and (("date" in cols) or ("report month" in cols) or ("report_month" in cols)):
+            if ("county" in cols) and (
+                ("date" in cols) or ("report month" in cols) or ("report_month" in cols)
+            ):
                 logs.append(f"{path.name}: read with header={h} (fallback)")
                 return df
         except Exception:
@@ -312,9 +329,10 @@ def read_gr_csv(path: Path, logs: list[str]) -> Optional[pd.DataFrame]:
     logs.append(f"{path.name}: could not find usable header row")
     return None
 
+
 def map_metric_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
-A.1. fix
+    A.1. fix
     """
     rename = {}
     for c in df.columns:
@@ -328,6 +346,7 @@ A.1. fix
     if rename:
         df = df.rename(columns=rename)
     return df
+
 
 @st.cache_data
 def load_all(files: list[str]):
@@ -354,7 +373,9 @@ def load_all(files: list[str]):
         df["County_Name"] = df["County_Name"].astype(str).str.strip()
         df = df[df["County_Name"] != "Statewide"].copy()
         df = df.dropna(subset=["County_Name"]).copy()
-        df = df[df["County_Name"].apply(lambda x: bool(county_has_letter.search(x)))].copy()
+        df = df[
+            df["County_Name"].apply(lambda x: bool(county_has_letter.search(x)))
+        ].copy()
         if df.empty:
             logs.append(f"{fname}: empty after county filtering")
             continue
@@ -375,7 +396,9 @@ def load_all(files: list[str]):
 
         metric_cols = [m for m in METRICS_IN_ORDER if m in df.columns]
         if not metric_cols:
-            logs.append(f"{fname}: no metric columns recognized (expected 1..29 or Cell 1..29)")
+            logs.append(
+                f"{fname}: no metric columns recognized (expected 1..29 or Cell 1..29)"
+            )
             continue
 
         # num coerc
@@ -410,7 +433,9 @@ def load_all(files: list[str]):
 
     combined = pd.concat(frames, ignore_index=True)
     combined = combined.sort_values("Date").reset_index(drop=True)
-    combined = combined.drop_duplicates(subset=["Date", "County_Name", "Metric"], keep="first")
+    combined = combined.drop_duplicates(
+        subset=["Date", "County_Name", "Metric"], keep="first"
+    )
     return combined, logs
 
 
@@ -424,7 +449,9 @@ try:
                 st.write(l)
 
     if data.empty:
-        st.error("No data loaded. Turn on the debug log to see which file(s) failed and why.")
+        st.error(
+            "No data loaded. Turn on the debug log to see which file(s) failed and why."
+        )
         st.stop()
 
     min_date = data["Date"].min().date()
@@ -434,113 +461,4 @@ try:
     st.markdown(
         f"""
         <div class="gr-hero">
-          <div class="gr-hero-title">GR 237 - General Relief and Interim Assistance to Applicants for SSI/SSP Monthly Caseload and Expenditure Statistical Report</div>
-          <p class="gr-hero-sub">Source Data: https://www.cdss.ca.gov/inforesources/research-and-data/disability-adult-programs-data-tables/gr-237</p>
-          <div class="pill-row">
-            <span class="pill"><span class="dot"></span><b>Rows</b>&nbsp;{len(data):,}</span>
-            <span class="pill"><span class="dot dot2"></span><b>Date range</b>&nbsp;{min_date} → {max_date}</span>
-            <span class="pill"><span class="dot dot3"></span><b>Files</b>&nbsp;{len(GR_FILE_NAMES)}</span>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown("<div style='height: 0.9rem;'></div>", unsafe_allow_html=True)
-    # hero end
-
-    # sidebar filters
-    all_counties = sorted(data["County_Name"].unique().tolist())
-    metrics = sorted(data["Metric"].unique().tolist(), key=metric_sort_key)
-
-    with st.sidebar:
-        default_start = max(min_date, date(2017, 1, 1))
-        default_end = max_date  # show through 2025 if those files load
-
-        date_range = st.slider(
-            "Date Range",
-            min_value=min_date,
-            max_value=max_date,
-            value=(default_start, default_end),
-            format="YYYY/MM/DD",
-        )
-
-        says_default_counties = ["Contra Costa", "Kern"]
-        default_counties = [c for c in says_default_counties if c in all_counties]
-        if not default_counties:
-            default_counties = all_counties[:2]
-
-        selected_counties = st.multiselect(
-            "Counties",
-            options=all_counties,
-            default=default_counties,
-        )
-
-        default_metric = "A. 2. Cases added during month"
-        selected_metrics = st.multiselect(
-            "Metrics",
-            options=metrics,
-            default=[default_metric] if default_metric in metrics else (metrics[:1] if metrics else []),
-        )
-
-    # filtered view
-    data_dated = data[
-        (data["Date"].dt.date >= date_range[0]) &
-        (data["Date"].dt.date <= date_range[1])
-    ].copy()
-
-    df = data_dated[
-        data_dated["County_Name"].isin(selected_counties) &
-        data_dated["Metric"].isin(selected_metrics)
-    ].dropna(subset=["Value"]).copy()
-
-    if df.empty:
-        st.warning("No data for the selected filters.")
-        st.stop()
-
-    df["Series"] = df["County_Name"] + " - " + df["Metric"]
-
-    # --- AUTO-UPDATING TITLE (counties + metrics + date range) ---
-    counties_label = ", ".join(selected_counties[:4]) + ("…" if len(selected_counties) > 4 else "")
-    metrics_label = ", ".join(selected_metrics[:2]) + ("…" if len(selected_metrics) > 2 else "")
-    start_label = date_range[0].strftime("%Y/%m/%d")
-    end_label = date_range[1].strftime("%Y/%m/%d")
-
-    st.markdown(
-        f"""
-        <h3 style='margin: 0.2rem 0 0.25rem 0;'>Trends in: {counties_label}</h3>
-        <div style="opacity:0.82; font-size:0.95rem; margin-bottom:0.6rem;">
-            <b>Metrics:</b> {metrics_label} &nbsp; • &nbsp;
-            <b>Period:</b> {start_label} → {end_label}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    # --- end auto title ---
-
-    chart_title = f"Trends: {counties_label} | {metrics_label} | {start_label} → {end_label}"
-
-    chart = alt.Chart(df).mark_line(point=True).encode(
-        x=alt.X("Date:T", axis=alt.Axis(title="Report Month", format="%b %Y")),
-        y=alt.Y("Value:Q", scale=alt.Scale(zero=False), title="Value"),
-        color=alt.Color("Series:N"),
-        tooltip=[
-            alt.Tooltip("Report_Month:N"),
-            alt.Tooltip("County_Name:N"),
-            alt.Tooltip("Metric:N"),
-            alt.Tooltip("Value:Q", format=",.0f"),
-        ],
-    ).properties(
-        title=chart_title
-    ).interactive()
-
-    st.altair_chart(chart, use_container_width=True)
-
-    st.markdown("---")
-    st.markdown("<h3 style='margin-bottom: 0.2rem;'>🧾 Underlying Data</h3>", unsafe_allow_html=True)
-    st.caption("Tip: Columns are sortable. This is likely most helpful for multi-county or multi-metric reports.")
-    st.caption("The leftmost column represents the row number of the data point, ordered in the total list of chronological data sets.")
-    st.dataframe(df.drop(columns=["Series"], errors="ignore"))
-
-except Exception as e:
-    st.error("The app crashed. Here’s the full error (so it won’t look like a blank page):")
-    st.exception(e)
+          <div class="gr
