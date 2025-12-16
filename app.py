@@ -129,7 +129,7 @@ GR_FILE_NAMES = [
 # metrics
 METRICS_IN_ORDER = [
     "A. Adjustment",
-    "A. 1. Cases brought forward",
+    "Cases brought forward",
     "A. 2. Cases added during month",
     "A. 3. Total cases available",
     "A. 4. Cases discontinued",
@@ -597,7 +597,7 @@ try:
 
     st.caption("Still, in general, major shifts in month-to-month data are rare and warrant specific explanation. For investigations into major data changes, viewers should check the y-axis range, where the minimum is the minimum data point, not zero.") 
 
-    st.caption("Beginning in March 2020, CDSS adopted **[a policy](https://www.cdss.ca.gov/portals/9/Data%20De-Identification%20Guidelines%20DSS%20Reference%20Guide_FINAL.pdf)** that replaced values 1-11 with a *. All prior data was updated accordingly. Where a * value appears in a data set, no value is recorded on the graph or in the underlying data. This has important impacts for individuals analyzing data from small counties, where changes in small month-to-month caseloads (and the data associated with them) can be eschewed. This is one example of data modelling being necessarily constrained by the privacy rights of Californians.",
+    st.caption("Beginning in March 2020, CDSS adopted **[a policy](https://www.cdss.ca.gov/portals/9/Data%20De-Identification%20Guidelines%20DSS%20Reference%20Guide_FINAL.pdf)** that replaced values 1-11 with a * for sensitive metrics caseload metrics, which here, includes all metrics except those marked  . All prior data was updated accordingly. Where a * value appears in a data set, no value is recorded on the graph or in the underlying data. This has important impacts for individuals analyzing data from small counties, where changes in small month-to-month caseloads (and the data associated with them) can be eschewed. This is one example of data modelling being necessarily constrained by the privacy rights of Californians.",
     unsafe_allow_html=True,
               )
     
