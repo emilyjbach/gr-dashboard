@@ -582,7 +582,7 @@ try:
     st.caption(
         "The leftmost column represents the row number of the data point, ordered in the total list of chronological data sets."
     )
-    st.dataframe(df.drop(columns=["Series", "County_Code"], errors="ignore"))
+    st.dataframe(df.drop(columns=["Series", "County_Code", "Date"], errors="ignore"))
 
 except Exception as e:
     st.error("The app crashed. Here’s the full error (so it won’t look like a blank page):")
