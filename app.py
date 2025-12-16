@@ -272,7 +272,6 @@ def load_all(files: list[str]):
 
         # a.1. fix r2
         logs.append(f"{fname}: Columns before mapping: {df.columns.tolist()}")
-        df = map_metric_columns(df)
 
         metric_cols = [m for m in METRICS_IN_ORDER if m in df.columns]
         if not metric_cols:
