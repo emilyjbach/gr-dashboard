@@ -227,25 +227,6 @@ def read_gr_csv(path: Path, logs: list[str]) -> Optional[pd.DataFrame]:
     logs.append(f"{path.name}: could not find usable header row")
     return None
 
-
-def map_metric_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    A.1. fix
-    """
-    rename = {}
-    for c in df.columns:
-        s = norm_col(c)
-        m = re.match(r"^(?:Cell\s*)?(\d+)$", s, flags=re.IGNORECASE)
-        if not m:
-            continue
-        n = int(m.group(1))
-        if 1 <= n <= len(METRICS_IN_ORDER):
-            rename[c] = METRICS_IN_ORDER[n - 1]
-    if rename:
-        df = df.rename(columns=rename)
-    return df
-
-
 @st.cache_data
 def load_all(files: list[str]):
     logs: list[str] = []
