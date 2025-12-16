@@ -530,7 +530,7 @@ try:
     counties_label = ", ".join(selected_counties[:4]) + (
         "…" if len(selected_counties) > 4 else ""
     )
-    metrics_label = ", ".join(selected_metrics[:2]) + (
+    metrics_label = ", ".join(selected_metrics[:4]) + (
         "…" if len(selected_metrics) > 2 else ""
     )
     start_label = date_range[0].strftime("%Y/%m/%d")
@@ -540,7 +540,7 @@ try:
         f"""
         <h3 style='margin: 0.2rem 0 0.25rem 0;'>Trends in: {counties_label}</h3>
         <div style="opacity:0.82; font-size:0.95rem; margin-bottom:0.6rem;">
-            <b>Metrics:</b> {metrics_label} &nbsp; • &nbsp;
+            <b>Metrics:</b> {metrics_label} &nbsp; 
             <b>Period:</b> {start_label} → {end_label}
         </div>
         """,
