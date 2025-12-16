@@ -62,12 +62,10 @@ METRICS_IN_ORDER = [
     "E. Net General Relief Expenditure",
 ]
 
-
 # sidebar setup
 with st.sidebar:
     st.header("Filter Options")
     show_debug = st.checkbox("Show debug log", value=False)
-
 
 # helpers
 def metric_sort_key(metric_name: str):
@@ -84,6 +82,25 @@ def metric_sort_key(metric_name: str):
         sub = 2
     return (letter, number, sub)
 
+def metric_ui_label(metric_name: str) -> str:
+    s = str(metric_name).strip()
+    s = s.replace("receipient", "recipient")
+    s = re.sub(r"\s+", " ", s)
+
+    m = re.match(r"^([A-E])\.\s*(\d+)\s*([ab]?)\.\s*(.+)$", s, flags=re.IGNORECASE)
+    if m:
+        letter = m.group(1).upper()
+        num = m.group(2)
+        sub = m.group(3).lower()
+        desc = m.group(4).strip()
+        code = f"{letter}{num}{sub}"
+        return f"{code} — {desc}"
+
+    m2 = re.match(r"^([A-E])\.\s*(.+)$", s, flags=re.IGNORECASE)
+    if m2:
+        return f"{m2.group(1).upper()} — {m2.group(2).strip()}"
+
+    return s
 
 def base_dir() -> Path:
     try:
@@ -91,10 +108,8 @@ def base_dir() -> Path:
     except Exception:
         return Path.cwd()
 
-
 BASE_DIR = base_dir()
 CANDIDATE_DIRS = [BASE_DIR, BASE_DIR / "data"]
-
 
 def resolve_path(fname: str) -> Optional[Path]:
     for d in CANDIDATE_DIRS:
@@ -103,13 +118,10 @@ def resolve_path(fname: str) -> Optional[Path]:
             return p
     return None
 
-
 def norm_col(x) -> str:
     return str(x).strip().lstrip("\ufeff").strip()
 
-
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    # drop spacer cols
     drop_cols = []
     for c in df.columns:
         s = norm_col(c)
@@ -120,7 +132,6 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     if drop_cols:
         df = df.drop(columns=drop_cols, errors="ignore")
 
-    # standardize col nams
     rename_map = {}
     for c in df.columns:
         low = norm_col(c).lower()
@@ -143,17 +154,14 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
     return df.rename(columns=rename_map)
 
-
 def parse_date_series(s: pd.Series) -> pd.Series:
     s = s.astype(str).str.strip()
     s = s.str.replace(r"\.0$", "", regex=True)
 
     out = pd.Series(pd.NaT, index=s.index)
 
-    # mon12
     out = out.fillna(pd.to_datetime(s.str.upper(), format="%b%y", errors="coerce"))
 
-    # 202512
     num = pd.to_numeric(s, errors="coerce")
     idx = num.dropna().index
     if len(idx) > 0:
@@ -162,29 +170,23 @@ def parse_date_series(s: pd.Series) -> pd.Series:
             pd.to_datetime(yyyymm, format="%Y%m", errors="coerce")
         )
 
-    # other randos
     for fmt in ("%Y-%m", "%Y-%m-%d", "%m/%Y", "%m/%d/%Y", "%b %Y", "%B %Y"):
         out = out.fillna(pd.to_datetime(s, format=fmt, errors="coerce"))
 
-    # fin
     out = out.fillna(pd.to_datetime(s, errors="coerce"))
     return out
 
-
 def build_date(df: pd.DataFrame) -> pd.Series:
-    # pref dat
     if "Date_Code" in df.columns:
         d = parse_date_series(df["Date_Code"])
         if d.notna().any():
             return d
 
-    # else
     if "Report_Month" in df.columns:
         d = parse_date_series(df["Report_Month"])
         if d.notna().any():
             return d
 
-    # else
     if "Month" in df.columns and "Year" in df.columns:
         month = pd.to_numeric(df["Month"], errors="coerce")
         year = pd.to_numeric(df["Year"], errors="coerce")
@@ -197,7 +199,6 @@ def build_date(df: pd.DataFrame) -> pd.Series:
         return d
 
     return pd.Series(pd.NaT, index=df.index)
-
 
 def read_gr_csv(path: Path, logs: list[str]) -> Optional[pd.DataFrame]:
     try:
@@ -227,11 +228,7 @@ def read_gr_csv(path: Path, logs: list[str]) -> Optional[pd.DataFrame]:
     logs.append(f"{path.name}: could not find usable header row")
     return None
 
-
 def map_metric_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    A.1. fix
-    """
     rename = {}
     for c in df.columns:
         s = norm_col(c)
@@ -244,7 +241,6 @@ def map_metric_columns(df: pd.DataFrame) -> pd.DataFrame:
     if rename:
         df = df.rename(columns=rename)
     return df
-
 
 @st.cache_data
 def load_all(files: list[str]):
@@ -262,12 +258,10 @@ def load_all(files: list[str]):
         if df is None or df.empty:
             continue
 
-        # req!!!!!
         if "County_Name" not in df.columns:
             logs.append(f"{fname}: missing County_Name after read")
             continue
 
-        # clean county
         df["County_Name"] = df["County_Name"].astype(str).str.strip()
         df = df[df["County_Name"] != "Statewide"].copy()
         df = df.dropna(subset=["County_Name"]).copy()
@@ -278,18 +272,15 @@ def load_all(files: list[str]):
             logs.append(f"{fname}: empty after county filtering")
             continue
 
-        # date builder
         df["Date"] = build_date(df)
         df = df.dropna(subset=["Date"]).copy()
         if df.empty:
             logs.append(f"{fname}: no parsable dates")
             continue
 
-        # good code! go good code!
         if "Report_Month" not in df.columns:
             df["Report_Month"] = df["Date"].dt.strftime("%b %Y")
 
-        # a.1. fix r2
         logs.append(f"{fname}: Columns before mapping: {df.columns.tolist()}")
         df = map_metric_columns(df)
 
@@ -300,7 +291,6 @@ def load_all(files: list[str]):
             )
             continue
 
-        # num coerc
         for c in metric_cols:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
@@ -309,7 +299,6 @@ def load_all(files: list[str]):
             logs.append(f"{fname}: all metric values empty after numeric coercion")
             continue
 
-        # long
         id_vars = ["Date", "Report_Month", "County_Name"]
         if "County_Code" in df.columns:
             id_vars.append("County_Code")
@@ -337,22 +326,17 @@ def load_all(files: list[str]):
     )
     return combined, logs
 
-# --- START OF MOVED STYLING BLOCK ---
-
 st.markdown(
     """
     <style>
-    
       .block-container { padding-top: 1.1rem; padding-bottom: 1.3rem; max-width: 1220px; }
       h1 { letter-spacing: -0.03em; margin-bottom: 0.15rem; }
       [data-testid="stCaptionContainer"] { margin-top: 0.2rem; opacity: 0.85; }
 
-      /* sidebar */
       section[data-testid="stSidebar"] { border-right: 1px solid rgba(49,51,63,0.12); }
       section[data-testid="stSidebar"] .block-container { padding-top: 1.2rem; }
       section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 { letter-spacing: -0.02em; }
 
-      /* silly girly pop box */
       .gr-hero {
         position: relative;
         overflow: hidden;
@@ -413,31 +397,23 @@ st.markdown(
       .dot2 { background: linear-gradient(135deg, rgba(255,97,165,0.95), rgba(255,184,107,0.9)); }
       .dot3 { background: linear-gradient(135deg, rgba(0,209,255,0.9), rgba(57,255,20,0.55)); }
 
-      /* make buttons/toggles feel more modern */
       .stButton button, .stDownloadButton button {
         border-radius: 12px !important;
         padding: 0.45rem 0.9rem !important;
       }
 
-      /* subheadr */
       h2, h3 { letter-spacing: -0.02em; }
 
-      /* divs */
       hr { margin: 1.35rem 0; opacity: 0.45; }
     </style>
     """,
     unsafe_allow_html=True,
 )
-# end styling
-
-# --- END OF MOVED STYLING BLOCK ---
-
 
 st.title("General Relief")
 st.caption(
     "Emily Bach (Development, Visualization) | CDSS (Data) | Language: Python | Last Code Update: 12/14/2025 Last Data Pull: 12/12/2025"
 )
-
 
 try:
     data, logs = load_all(GR_FILE_NAMES)
@@ -457,7 +433,6 @@ try:
     min_date = data["Date"].min().date()
     max_date = data["Date"].max().date()
 
-    # styling hero
     st.markdown(
         f"""
         <div class="gr-hero">
@@ -473,15 +448,17 @@ try:
         unsafe_allow_html=True,
     )
     st.markdown("<div style='height: 0.9rem;'></div>", unsafe_allow_html=True)
-    # hero end
 
-    # sidebar filters
     all_counties = sorted(data["County_Name"].unique().tolist())
-    metrics = sorted(data["Metric"].unique().tolist(), key=metric_sort_key)
+
+    present_metrics = data["Metric"].dropna().astype(str).unique().tolist()
+    metrics_in_order_present = [m for m in METRICS_IN_ORDER if m in present_metrics]
+    metrics_extra = [m for m in present_metrics if m not in set(metrics_in_order_present)]
+    metrics = metrics_in_order_present + sorted(metrics_extra, key=metric_sort_key)
 
     with st.sidebar:
         default_start = max(min_date, date(2017, 1, 1))
-        default_end = max_date  # show through 2025 if those files load
+        default_end = max_date
 
         date_range = st.slider(
             "Date Range",
@@ -509,9 +486,9 @@ try:
             default=[default_metric]
             if default_metric in metrics
             else (metrics[:1] if metrics else []),
+            format_func=metric_ui_label,
         )
 
-    # filtered view
     data_dated = data[
         (data["Date"].dt.date >= date_range[0])
         & (data["Date"].dt.date <= date_range[1])
@@ -528,14 +505,13 @@ try:
 
     df["Series"] = df["County_Name"] + " - " + df["Metric"]
 
-    # (counties + metrics + date range) 
     county_plural = "Counties" if len(selected_counties) > 1 else "County"
 
     counties_label = ", ".join(selected_counties[:4]) + (
         "…" if len(selected_counties) > 4 else ""
     )
-    metrics_label = ", ".join(selected_metrics[:4]) + (
-    "…" if len(selected_metrics) > 4 else ""
+    metrics_label = ", ".join([metric_ui_label(m) for m in selected_metrics[:4]]) + (
+        "…" if len(selected_metrics) > 4 else ""
     )
 
     start_label = date_range[0].strftime("%Y/%m/%d")
@@ -551,7 +527,6 @@ try:
         """,
         unsafe_allow_html=True,
     )
-    # end title big guy
 
     chart_title = (
         f"{county_plural}: {counties_label} | {metrics_label} | {start_label} → {end_label}"
@@ -590,28 +565,37 @@ try:
 
     st.markdown("---")
     st.markdown(
-            "<h3 style='margin-bottom: 0.2rem;'>👩‍💻 Interpreting Data</h3>",
-            unsafe_allow_html=True,
+        "<h3 style='margin-bottom: 0.2rem;'>👩‍💻 Interpreting Data</h3>",
+        unsafe_allow_html=True,
     )
 
-    st.caption("GR 237 is a monthly report produced by the California Department of Social Services (CDSS) documenting county-level data changes in General Relief and Interim Assistance cases. These programs provide cash benefits to thousands of Californians each month.")
-    
+    st.caption(
+        "GR 237 is a monthly report produced by the California Department of Social Services (CDSS) documenting county-level data changes in General Relief and Interim Assistance cases. These programs provide cash benefits to thousands of Californians each month."
+    )
+
     st.caption(
         "There are no strict rules for interpreting GR 237 data and local sources with a direct tie to impacted communities should be consulted for a full explanation of trends. The Roots Community Health Center, for example, prepared an **[excellent report](https://rootscommunityhealth.org/wp-content/uploads/2014/07/GA_eval_12.pdf)** utilizing and contextualizing data trends in Alameda County's GA Program (which itself recommends a dashboard like this one.)",
         unsafe_allow_html=True,
     )
 
-    st.caption("Still, in general, major shifts in month-to-month data are rare and warrant specific explanation. For investigations into major data changes, viewers should check the y-axis range, where the minimum is the minimum data point, not zero.") 
-
-    st.caption("Beginning in March 2020, CDSS adopted **[a policy](https://www.cdss.ca.gov/portals/9/Data%20De-Identification%20Guidelines%20DSS%20Reference%20Guide_FINAL.pdf)** that replaced values 1-11 with a * (star) for sensitive caseload metrics, which here, includes all non-dollar metrics. CDSS instituted these changes, known as de-identification, to safeguard privacy rights. De-identification has **[widely-appreciated](https://pmc.ncbi.nlm.nih.gov/articles/PMC8110889/)** **[racial equity](https://healthlaw.org/wp-content/uploads/2023/03/Striking-the-Balance_for-publication.pdf)** **[benefits](https://aisp.upenn.edu/wp-content/uploads/2025/02/Centering-Equity-Toolkit-2.0.pdf)** in the context of public data sets without demographic information, like GR 237.",
-    unsafe_allow_html=True,
-             )
-
-    st.caption("All data prior to 2020 was updated accordingly. Where a * value appears in a data set, no value is recorded on the graph or in the underlying data. This has important impacts for individuals analyzing data from small counties, where changes in small month-to-month caseloads (and the data associated with them) can be eschewed.",
+    st.caption(
+        "Still, in general, major shifts in month-to-month data are rare and warrant specific explanation. For investigations into major data changes, viewers should check the y-axis range, where the minimum is the minimum data point, not zero."
     )
-    
-    st.caption("Where a zero appears in a data set, a zero value is recorded on the graph or underlying data.")
-                
+
+    st.caption(
+        "Beginning in March 2020, CDSS adopted **[a policy](https://www.cdss.ca.gov/portals/9/Data%20De-Identification%20Guidelines%20DSS%20Reference%20Guide_FINAL.pdf)** that replaced values 1-11 with a * (star) for sensitive caseload metrics, which here, includes all non-dollar metrics. CDSS instituted these changes, known as de-identification, to safeguard privacy rights. De-identification has **[widely-appreciated](https://pmc.ncbi.nlm.nih.gov/articles/PMC8110889/)** **[racial equity](https://healthlaw.org/wp-content/uploads/2023/03/Striking-the-Balance_for-publication.pdf)** **[benefits](https://aisp.upenn.edu/wp-content/uploads/2025/02/Centering-Equity-Toolkit-2.0.pdf)** in the context of public data sets without demographic information, like GR 237.",
+        unsafe_allow_html=True,
+    )
+
+    st.caption(
+        "All data prior to 2020 was updated accordingly. Where a * value appears in a data set, no value is recorded on the graph or in the underlying data. This has important impacts for individuals analyzing data from small counties, where changes in small month-to-month caseloads (and the data associated with them) can be eschewed.",
+    )
+
+    st.caption(
+        "Where a zero appears in a data set, a zero value is recorded on the graph or underlying data."
+    )
+
 except Exception as e:
     st.error("The app crashed. Here’s the full error (so it won’t look like a blank page):")
     st.exception(e)
+
