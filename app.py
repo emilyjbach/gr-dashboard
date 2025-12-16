@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 st.markdown(
-    
+    ""
     <style>
     
       .block-container { padding-top: 1.1rem; padding-bottom: 1.3rem; max-width: 1220px; }
@@ -101,7 +101,7 @@ st.markdown(
       /* divs */
       hr { margin: 1.35rem 0; opacity: 0.45; }
     </style>
-    ,
+    "",
     unsafe_allow_html=True,
 )
 # end styling
