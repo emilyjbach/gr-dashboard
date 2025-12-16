@@ -500,7 +500,7 @@ try:
         default_metric = "A. 2. Cases added during month"
         selected_metrics = st.multiselect(
             "Metrics",
-            options=METRICS_IN_ORDER,
+            options=metrics,
             default=[default_metric]
             if default_metric in metrics
             else (metrics[:1] if metrics else []),
