@@ -597,7 +597,9 @@ try:
 
     st.caption("Still, in general, major shifts in month-to-month data are rare and warrant specific explanation. For investigations into major data changes, viewers should check the y-axis range, where the minimum is the minimum data point, not zero.") 
 
-    st.caption("Beginning in March 2020, CDSS adopted a policy that replaced values 1-11 with a *. All prior data was updated accordingly. Where a * value appears in a data set, no value is recorded on the graph or in the underlying data. Where a zero appears in a data set, a zero value is recorded on the graph or underlying data. This has important impacts for individuals analyzing data from small counties, where changes in small month-to-month caseloads (and the data associated with them) are eschewed.")
+    st.caption("Beginning in March 2020, CDSS adopted a policy that replaced values 1-11 with a *. All prior data was updated accordingly. Where a * value appears in a data set, no value is recorded on the graph or in the underlying data. This has important impacts for individuals analyzing data from small counties, where changes in small month-to-month caseloads (and the data associated with them) can be eschewed. This is one example of data modelling being necessarily constrained by the privacy rights of Californians.") 
+    
+    st.caption("Where a zero appears in a data set, a zero value is recorded on the graph or underlying data.")
                
 except Exception as e:
     st.error("The app crashed. Here’s the full error (so it won’t look like a blank page):")
