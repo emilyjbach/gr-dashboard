@@ -128,10 +128,10 @@ GR_FILE_NAMES = [
 
 # metrics
 METRICS_IN_ORDER = [
-    "A. Adjustment",
+    "Adjustment",
     "Cases brought forward",
-    "A. 2. Cases added during month",
-    "A. 3. Total cases available",
+    "Cases added during month",
+    "Total cases available",
     "A. 4. Cases discontinued",
     "A. 5. Cases carried forward",
     "B. 6. Total General Relief Cases",
