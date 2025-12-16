@@ -61,15 +61,6 @@ METRICS_IN_ORDER = [
     "D. 11b. Amount repaid by recipient",
     "E. Net General Relief Expenditure",
 ]
-# START OF CUSTOM METRIC NAME DICTIONARY
-# Use this dictionary to map the official metric names (keys) to the shorter names
-# you want to display in the sidebar (values). The official names are required for sorting.
-METRIC_DISPLAY_NAMES = {
-    # Example Mappings:
-    # "A. 2. Cases added during month": "A. 2. Cases Added",
-    # "B. 6. Total GR Expenditure (Dollars)": "B. Total GR $"
-}
-# END OF CUSTOM METRIC NAME DICTIONARY
 
 # sidebar setup
 with st.sidebar:
