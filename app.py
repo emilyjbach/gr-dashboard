@@ -69,28 +69,6 @@ st.markdown(
         margin: 0;
       }
 
-      /* pills */
-      .pill-row { margin-top: 0.8rem; display: flex; flex-wrap: wrap; gap: 10px; }
-      .pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 6px 12px;
-        border-radius: 999px;
-        border: 1px solid rgba(49, 51, 63, 0.16);
-        background: rgba(255,255,255,0.72);
-        box-shadow: 0 1px 10px rgba(0,0,0,0.04);
-        font-size: 0.88rem;
-      }
-      .dot {
-        width: 9px;
-        height: 9px;
-        border-radius: 999px;
-        display:inline-block;
-        background: linear-gradient(135deg, rgba(151,71,255,0.95), rgba(0,209,255,0.9));
-      }
-      .dot2 { background: linear-gradient(135deg, rgba(255,97,165,0.95), rgba(255,184,107,0.9)); }
-      .dot3 { background: linear-gradient(135deg, rgba(0,209,255,0.9), rgba(57,255,20,0.55)); }
 
       /* datafrm + expander spacing */
       [data-testid="stDataFrame"] { border-radius: 14px; overflow: hidden; }
