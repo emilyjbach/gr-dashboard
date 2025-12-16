@@ -527,18 +527,21 @@ try:
     df["Series"] = df["County_Name"] + " - " + df["Metric"]
 
     # (counties + metrics + date range) 
+    county_plural = "Counties" if len(selected_counties) > 1 else "County"
+
     counties_label = ", ".join(selected_counties[:4]) + (
         "…" if len(selected_counties) > 4 else ""
     )
     metrics_label = ", ".join(selected_metrics[:4]) + (
-        "…" if len(selected_metrics) > 2 else ""
+    "…" if len(selected_metrics) > 4 else ""
     )
+
     start_label = date_range[0].strftime("%Y/%m/%d")
     end_label = date_range[1].strftime("%Y/%m/%d")
 
     st.markdown(
         f"""
-        <h3 style='margin: 0.2rem 0 0.25rem 0;'>Trends in: {counties_label}</h3>
+        <h3 style='margin: 0.2rem 0 0.25rem 0;'>{county_plural}: {counties_label}</h3>
         <div style="opacity:0.82; font-size:0.95rem; margin-bottom:0.6rem;">
             <b>Metrics:</b> {metrics_label} &nbsp; 
             <b>Period:</b> {start_label} → {end_label}
@@ -549,7 +552,7 @@ try:
     # end title big guy
 
     chart_title = (
-        f"Trends: {counties_label} | {metrics_label} | {start_label} → {end_label}"
+        f"{county_plural}: {counties_label} | {metrics_label} | {start_label} → {end_label}"
     )
 
     chart = (
