@@ -20,12 +20,17 @@ st.markdown(
     """
     <style>
 
+          /* layout type */
+      .block-container { padding-top: 1.1rem; padding-bottom: 2.6rem; max-width: 1220px; }
+      h1 { letter-spacing: -0.03em; margin-bottom: 0.15rem; }
+      [data-testid="stCaptionContainer"] { margin-top: 0.2rem; opacity: 0.85; }
+
       /* sidebar */
       section[data-testid="stSidebar"] { border-right: 1px solid rgba(49,51,63,0.12); }
       section[data-testid="stSidebar"] .block-container { padding-top: 1.2rem; }
       section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 { letter-spacing: -0.02em; }
 
-      /* top hero card */
+      /* silly girly pop box */
       .gr-hero {
         position: relative;
         overflow: hidden;
@@ -64,8 +69,6 @@ st.markdown(
         opacity: 0.80;
         margin: 0;
       }
-
-      /* pills */
       .pill-row { margin-top: 0.8rem; display: flex; flex-wrap: wrap; gap: 10px; }
       .pill {
         display: inline-flex;
