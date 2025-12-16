@@ -528,7 +528,7 @@ try:
 
     df["Series"] = df["County_Name"] + " - " + df["Metric"]
 
-    # --- AUTO-UPDATING TITLE (counties + metrics + date range) ---
+    # (counties + metrics + date range) 
     counties_label = ", ".join(selected_counties[:4]) + (
         "…" if len(selected_counties) > 4 else ""
     )
@@ -548,7 +548,7 @@ try:
         """,
         unsafe_allow_html=True,
     )
-    # --- end auto title ---
+    # end title big guy
 
     chart_title = (
         f"Trends: {counties_label} | {metrics_label} | {start_label} → {end_label}"
