@@ -15,103 +15,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-st.markdown(
-    """
-    <style>
-    
-      .block-container { padding-top: 1.1rem; padding-bottom: 1.3rem; max-width: 1220px; }
-      h1 { letter-spacing: -0.03em; margin-bottom: 0.15rem; }
-      [data-testid="stCaptionContainer"] { margin-top: 0.2rem; opacity: 0.85; }
-
-      /* sidebar */
-      section[data-testid="stSidebar"] { border-right: 1px solid rgba(49,51,63,0.12); }
-      section[data-testid="stSidebar"] .block-container { padding-top: 1.2rem; }
-      section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 { letter-spacing: -0.02em; }
-
-      /* silly girly pop box */
-      .gr-hero {
-        position: relative;
-        overflow: hidden;
-        border-radius: 18px;
-        padding: 18px 18px 16px 18px;
-        border: 1px solid rgba(49, 51, 63, 0.14);
-        background:
-          radial-gradient(900px 180px at 10% 0%, rgba(151, 71, 255, 0.16), transparent 55%),
-          radial-gradient(900px 180px at 60% 10%, rgba(0, 209, 255, 0.14), transparent 55%),
-          radial-gradient(700px 200px at 90% 0%, rgba(255, 97, 165, 0.14), transparent 58%),
-          rgba(255,255,255,0.70);
-        box-shadow: 0 10px 30px rgba(0,0,0,0.06);
-      }
-      .gr-hero:after{
-        content:"";
-        position:absolute;
-        inset:-2px;
-        border-radius: 18px;
-        background: linear-gradient(120deg,
-          rgba(151,71,255,0.22),
-          rgba(0,209,255,0.18),
-          rgba(255,97,165,0.18));
-        filter: blur(22px);
-        opacity: 0.55;
-        z-index: 0;
-      }
-      .gr-hero * { position: relative; z-index: 1; }
-      .gr-hero-title {
-        font-size: 1.02rem;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-        margin: 0 0 0.35rem 0;
-      }
-      .gr-hero-sub {
-        font-size: 0.92rem;
-        opacity: 0.80;
-        margin: 0;
-      }
-      .pill-row { margin-top: 0.8rem; display: flex; flex-wrap: wrap; gap: 10px; }
-      .pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 6px 12px;
-        border-radius: 999px;
-        border: 1px solid rgba(49, 51, 63, 0.16);
-        background: rgba(255,255,255,0.72);
-        box-shadow: 0 1px 10px rgba(0,0,0,0.04);
-        font-size: 0.88rem;
-      }
-      .dot {
-        width: 9px;
-        height: 9px;
-        border-radius: 999px;
-        display:inline-block;
-        background: linear-gradient(135deg, rgba(151,71,255,0.95), rgba(0,209,255,0.9));
-      }
-      .dot2 { background: linear-gradient(135deg, rgba(255,97,165,0.95), rgba(255,184,107,0.9)); }
-      .dot3 { background: linear-gradient(135deg, rgba(0,209,255,0.9), rgba(57,255,20,0.55)); }
-
-      /* make buttons/toggles feel more modern */
-      .stButton button, .stDownloadButton button {
-        border-radius: 12px !important;
-        padding: 0.45rem 0.9rem !important;
-      }
-
-      /* subheadr */
-      h2, h3 { letter-spacing: -0.02em; }
-
-      /* divs */
-      hr { margin: 1.35rem 0; opacity: 0.45; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-# end styling
-
-
-st.title("General Relief")
-st.caption(
-    "Emily Bach (Development, Visualization) | CDSS (Data) | Language: Python | Last Code Update: 12/14/2025 Last Data Pull: 12/12/2025"
-)
-
 # files
 GR_FILE_NAMES = [
     "15-16.csv",
@@ -158,8 +61,17 @@ METRICS_IN_ORDER = [
     "D. 11b. Amount repaid by recipient",
     "E. Net General Relief Expenditure",
 ]
+# START OF CUSTOM METRIC NAME DICTIONARY
+# Use this dictionary to map the official metric names (keys) to the shorter names
+# you want to display in the sidebar (values). The official names are required for sorting.
+METRIC_DISPLAY_NAMES = {
+    # Example Mappings:
+    # "A. 2. Cases added during month": "A. 2. Cases Added",
+    # "B. 6. Total GR Expenditure (Dollars)": "B. Total GR $"
+}
+# END OF CUSTOM METRIC NAME DICTIONARY
 
-# sidebar
+# sidebar setup
 with st.sidebar:
     st.header("Filter Options")
     show_debug = st.checkbox("Show debug log", value=False)
@@ -386,7 +298,7 @@ def load_all(files: list[str]):
             df["Report_Month"] = df["Date"].dt.strftime("%b %Y")
 
         # a.1. fix r2
-        logs.append(f"{fname}: Columns before mapping: {df.columns.tolist()}") # <<< ADD THIS LINE
+        logs.append(f"{fname}: Columns before mapping: {df.columns.tolist()}")
         df = map_metric_columns(df)
 
         metric_cols = [m for m in METRICS_IN_ORDER if m in df.columns]
@@ -433,9 +345,116 @@ def load_all(files: list[str]):
     )
     return combined, logs
 
+# --- START OF MOVED STYLING BLOCK ---
+
+st.markdown(
+    """
+    <style>
+    
+      .block-container { padding-top: 1.1rem; padding-bottom: 1.3rem; max-width: 1220px; }
+      h1 { letter-spacing: -0.03em; margin-bottom: 0.15rem; }
+      [data-testid="stCaptionContainer"] { margin-top: 0.2rem; opacity: 0.85; }
+
+      /* sidebar */
+      section[data-testid="stSidebar"] { border-right: 1px solid rgba(49,51,63,0.12); }
+      section[data-testid="stSidebar"] .block-container { padding-top: 1.2rem; }
+      section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 { letter-spacing: -0.02em; }
+
+      /* silly girly pop box */
+      .gr-hero {
+        position: relative;
+        overflow: hidden;
+        border-radius: 18px;
+        padding: 18px 18px 16px 18px;
+        border: 1px solid rgba(49, 51, 63, 0.14);
+        background:
+          radial-gradient(900px 180px at 10% 0%, rgba(151, 71, 255, 0.16), transparent 55%),
+          radial-gradient(900px 180px at 60% 10%, rgba(0, 209, 255, 0.14), transparent 55%),
+          radial-gradient(700px 200px at 90% 0%, rgba(255, 97, 165, 0.14), transparent 58%),
+          rgba(255,255,255,0.70);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+      }
+      .gr-hero:after{
+        content:"";
+        position:absolute;
+        inset:-2px;
+        border-radius: 18px;
+        background: linear-gradient(120deg,
+          rgba(151,71,255,0.22),
+          rgba(0,209,255,0.18),
+          rgba(255,97,165,0.18));
+        filter: blur(22px);
+        opacity: 0.55;
+        z-index: 0;
+      }
+      .gr-hero * { position: relative; z-index: 1; }
+      .gr-hero-title {
+        font-size: 1.02rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        margin: 0 0 0.35rem 0;
+      }
+      .gr-hero-sub {
+        font-size: 0.92rem;
+        opacity: 0.80;
+        margin: 0;
+      }
+      .pill-row { margin-top: 0.8rem; display: flex; flex-wrap: wrap; gap: 10px; }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(49, 51, 63, 0.16);
+        background: rgba(255,255,255,0.72);
+        box-shadow: 0 1px 10px rgba(0,0,0,0.04);
+        font-size: 0.88rem;
+      }
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 999px;
+        display:inline-block;
+        background: linear-gradient(135deg, rgba(151,71,255,0.95), rgba(0,209,255,0.9));
+      }
+      .dot2 { background: linear-gradient(135deg, rgba(255,97,165,0.95), rgba(255,184,107,0.9)); }
+      .dot3 { background: linear-gradient(135deg, rgba(0,209,255,0.9), rgba(57,255,20,0.55)); }
+
+      /* make buttons/toggles feel more modern */
+      .stButton button, .stDownloadButton button {
+        border-radius: 12px !important;
+        padding: 0.45rem 0.9rem !important;
+      }
+
+      /* subheadr */
+      h2, h3 { letter-spacing: -0.02em; }
+
+      /* divs */
+      hr { margin: 1.35rem 0; opacity: 0.45; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+# end styling
+
+# --- END OF MOVED STYLING BLOCK ---
+
+
+st.title("General Relief")
+st.caption(
+    "Emily Bach (Development, Visualization) | CDSS (Data) | Language: Python | Last Code Update: 12/14/2025 Last Data Pull: 12/12/2025"
+)
+
 
 try:
     data, logs = load_all(GR_FILE_NAMES)
+
+    # BEGIN CUSTOM METRIC NAME APPLICATION
+    # Rename the values in the 'Metric' column for display in the sidebar.
+    # This must be done after loading but before the sidebar is generated.
+    data["Metric"] = data["Metric"].replace(METRIC_DISPLAY_NAMES)
+    # END CUSTOM METRIC NAME APPLICATION
 
     if show_debug:
         with st.expander("Debug log", expanded=True):
@@ -574,7 +593,7 @@ try:
 
     st.markdown("---")
     st.markdown(
-        "<h3 style='margin-bottom: 0.2rem;'>Underlying Data</h3>",
+        "<h3 style='margin-bottom: 0.2rem;'>🧾 Underlying Data</h3>",
         unsafe_allow_html=True,
     )
     st.caption(
@@ -585,7 +604,7 @@ try:
 
     st.markdown("---")
     st.markdown(
-            "<h3 style='margin-bottom: 0.2rem;'>Interpreting Data</h3>",
+            "<h3 style='margin-bottom: 0.2rem;'>👩‍💻 Interpreting Data</h3>",
             unsafe_allow_html=True,
     )
 
@@ -600,13 +619,13 @@ try:
 
     st.caption("Beginning in March 2020, CDSS adopted **[a policy](https://www.cdss.ca.gov/portals/9/Data%20De-Identification%20Guidelines%20DSS%20Reference%20Guide_FINAL.pdf)** that replaced values 1-11 with a * (star) for sensitive caseload metrics, which here, includes all non-dollar metrics. CDSS instituted these changes, known as de-identification, to safeguard privacy rights. De-identification has **[widely-appreciated](https://pmc.ncbi.nlm.nih.gov/articles/PMC8110889/)** **[racial equity](https://healthlaw.org/wp-content/uploads/2023/03/Striking-the-Balance_for-publication.pdf)** **[benefits](https://aisp.upenn.edu/wp-content/uploads/2025/02/Centering-Equity-Toolkit-2.0.pdf)** in the context of public data sets without demographic information, like GR 237.",
     unsafe_allow_html=True,
-              )
+             )
 
     st.caption("All data prior to 2020 was updated accordingly. Where a * value appears in a data set, no value is recorded on the graph or in the underlying data. This has important impacts for individuals analyzing data from small counties, where changes in small month-to-month caseloads (and the data associated with them) can be eschewed.",
     )
     
     st.caption("Where a zero appears in a data set, a zero value is recorded on the graph or underlying data.")
-               
+                
 except Exception as e:
     st.error("The app crashed. Here’s the full error (so it won’t look like a blank page):")
     st.exception(e)
