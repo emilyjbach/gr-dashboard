@@ -582,6 +582,12 @@ try:
 
     st.dataframe(df.drop(columns=["Series", "County_Code", "Date"], errors="ignore"))
 
+    st.markdown("---")
+    st.markdown(
+            "<h3 style='margin-bottom: 0.2rem;'>👩‍💻 Understanding Data</h3>",
+            unsafe_allow=True,
+    )
+
 except Exception as e:
     st.error("The app crashed. Here’s the full error (so it won’t look like a blank page):")
     st.exception(e)
