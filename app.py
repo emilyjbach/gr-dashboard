@@ -62,16 +62,6 @@ METRICS_IN_ORDER = [
     "E. Net General Relief Expenditure",
 ]
 
-# Fix: Initialize the dictionary here so the code later on can find it.
-# Use this dictionary to map the official metric names (keys) to the shorter names
-# you want to display in the sidebar (values). The official names are required for sorting.
-METRIC_DISPLAY_NAMES = {
-    # Example Mappings (currently empty, which is fine):
-    # "A. 2. Cases added during month": "A. 2. Cases Added",
-    # "B. 6. Total GR Expenditure (Dollars)": "B. Total GR $"
-}
-
-
 # sidebar setup
 with st.sidebar:
     st.header("Filter Options")
