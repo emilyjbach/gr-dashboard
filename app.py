@@ -592,10 +592,12 @@ try:
         "The leftmost column represents the row number of the data point, ordered in the total list of chronological data sets.")    
     
     st.caption(
-        "There are no strict rules for interpreting this data and local sources with a direct tie to impacted communities should be consulted for a full explanation of trends. The Roots Community Health Center, for example, prepared an **[excellent report](https://rootscommunityhealth.org/wp-content/uploads/2014/07/GA_eval_12.pdf)** utilizing and contextualizing data trends in Alameda County's GA Program.",
+        "There are no strict rules for interpreting this data and local sources with a direct tie to impacted communities should be consulted for a full explanation of trends. The Roots Community Health Center, for example, prepared an **[excellent report](https://rootscommunityhealth.org/wp-content/uploads/2014/07/GA_eval_12.pdf)** utilizing and contextualizing data trends in Alameda County's GA Program (which itself recommends a dashboard like this one.)",
         unsafe_allow_html=True,
     )
 
+    st.caption("Still, in general, major shifts in month-to-month data are rare and warrant specific explanation. For investigations into major data changes, viewers should check the y-axis range, where the minimum is the minimum data point, not zero.")
+               
 except Exception as e:
     st.error("The app crashed. Here’s the full error (so it won’t look like a blank page):")
     st.exception(e)
