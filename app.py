@@ -587,6 +587,8 @@ try:
             "<h3 style='margin-bottom: 0.2rem;'>👩‍💻 Interpreting Data</h3>",
             unsafe_allow_html=True,
     )
+
+    st.caption("GR 237 is a monthly report produced by the California Department of Social Services documenting county-level data changes in General Relief and Interim Assistance cases. These programs provide cash benefits to thousands of Californians each month."
     
     st.caption(
         "There are no strict rules for interpreting this data and local sources with a direct tie to impacted communities should be consulted for a full explanation of trends. The Roots Community Health Center, for example, prepared an **[excellent report](https://rootscommunityhealth.org/wp-content/uploads/2014/07/GA_eval_12.pdf)** utilizing and contextualizing data trends in Alameda County's GA Program (which itself recommends a dashboard like this one.)",
