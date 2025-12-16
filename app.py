@@ -588,16 +588,16 @@ try:
             unsafe_allow_html=True,
     )
 
-    st.caption("GR 237 is a monthly report produced by the California Department of Social Services documenting county-level data changes in General Relief and Interim Assistance cases. These programs provide cash benefits to thousands of Californians each month.")
+    st.caption("GR 237 is a monthly report produced by the California Department of Social Services (CDSS) documenting county-level data changes in General Relief and Interim Assistance cases. These programs provide cash benefits to thousands of Californians each month.")
     
     st.caption(
-        "There are no strict rules for interpreting this data and local sources with a direct tie to impacted communities should be consulted for a full explanation of trends. The Roots Community Health Center, for example, prepared an **[excellent report](https://rootscommunityhealth.org/wp-content/uploads/2014/07/GA_eval_12.pdf)** utilizing and contextualizing data trends in Alameda County's GA Program (which itself recommends a dashboard like this one.)",
+        "There are no strict rules for interpreting GR 237 data and local sources with a direct tie to impacted communities should be consulted for a full explanation of trends. The Roots Community Health Center, for example, prepared an **[excellent report](https://rootscommunityhealth.org/wp-content/uploads/2014/07/GA_eval_12.pdf)** utilizing and contextualizing data trends in Alameda County's GA Program (which itself recommends a dashboard like this one.)",
         unsafe_allow_html=True,
     )
 
     st.caption("Still, in general, major shifts in month-to-month data are rare and warrant specific explanation. For investigations into major data changes, viewers should check the y-axis range, where the minimum is the minimum data point, not zero.") 
 
-    st.caption("Beginning in March 2020, CDSS adopted a policy that replaced values 1-11 with a *. All prior data was updated accordingly. Where a * value appears in a data set, no value is recorded on the graph or in the underlying data.")
+    st.caption("Beginning in March 2020, CDSS adopted a policy that replaced values 1-11 with a *. All prior data was updated accordingly. Where a * value appears in a data set, no value is recorded on the graph or in the underlying data. Where a zero appears in a data set, a zero value is recorded on the graph or underlying data. This has important impacts for individuals analyzing data from small counties, where changes in small month-to-month caseloads (and the data associated with them) are eschewed.")
                
 except Exception as e:
     st.error("The app crashed. Here’s the full error (so it won’t look like a blank page):")
