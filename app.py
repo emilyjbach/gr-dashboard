@@ -1,4 +1,4 @@
-import re
+Mimport re
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -472,7 +472,7 @@ try:
 
     # sidebar filters
     all_counties = sorted(data["County_Name"].unique().tolist())
-    metrics = sorted(data[METRICS_IN_ORDER].unique().tolist(), key=metric_sort_key)
+    metrics = sorted(data["Metrics"].unique().tolist(), key=metric_sort_key)
 
     with st.sidebar:
         default_start = max(min_date, date(2017, 1, 1))
@@ -500,7 +500,7 @@ try:
         default_metric = "A. 2. Cases added during month"
         selected_metrics = st.multiselect(
             "Metrics",
-            options=metrics,
+            options=METRICS_IN_ORDER,
             default=[default_metric]
             if default_metric in metrics
             else (metrics[:1] if metrics else []),
