@@ -561,7 +561,7 @@ try:
     )
 
     st.caption(
-        "Where a zero appears in a data set, a zero value is recorded on the graph or underlying data."
+        "Where a zero appears in a data set, a zero value is recorded on the graph and underlying data."
     )
 
 except Exception as e:
