@@ -579,7 +579,7 @@ try:
 
     st.markdown("---")
     st.markdown(
-        "<h3 style='margin-bottom: 0.2rem;'>🧾 Underlying Data</h3>",
+        "<h3 style='margin-bottom: 0.2rem;'>Underlying Data</h3>",
         unsafe_allow_html=True,
     )
     st.caption(
@@ -590,7 +590,7 @@ try:
 
     st.markdown("---")
     st.markdown(
-            "<h3 style='margin-bottom: 0.2rem;'>👩‍💻 Interpreting Data</h3>",
+            "<h3 style='margin-bottom: 0.2rem;'>Interpreting Data</h3>",
             unsafe_allow_html=True,
     )
 
