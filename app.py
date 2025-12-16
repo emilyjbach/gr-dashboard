@@ -569,7 +569,7 @@ try:
     )
 
     st.caption(
-        "All data prior to 2020 was updated accordingly. Where a * value appears in a data set, no value is recorded on the graph or in the underlying data. This has important impacts for individuals analyzing data from small counties, where changes in small month-to-month caseloads (and the data associated with them) can be eschewed or disappear entirely.",
+        "All data prior to 2020 was updated accordingly. Where a star appears in a data set, no value is recorded on the graph or in the underlying data. This has important impacts for individuals analyzing data from small counties, where changes in small month-to-month caseloads (and the data associated with them) can be eschewed or disappear entirely.",
     )
 
     st.caption(
