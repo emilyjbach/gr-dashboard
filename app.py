@@ -14,6 +14,12 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+st.markdown(
+    <style>
+      /* datafrm + expander spacing */
+      [data-testid="stDataFrame"] { border-radius: 14px; overflow: hidden; }
+      details { border-radius: 14px; }
+)
 
 st.title("General Relief")
 st.caption(
@@ -497,96 +503,3 @@ except Exception as e:
     st.exception(e)
 
 # styling
-st.markdown(
-    """
-    <style>
-    
-      .block-container { padding-top: 1.1rem; padding-bottom: 1.3rem; max-width: 1220px; }
-      h1 { letter-spacing: -0.03em; margin-bottom: 0.15rem; }
-      [data-testid="stCaptionContainer"] { margin-top: 0.2rem; opacity: 0.85; }
-
-      /* sidebar */
-      section[data-testid="stSidebar"] { border-right: 1px solid rgba(49,51,63,0.12); }
-      section[data-testid="stSidebar"] .block-container { padding-top: 1.2rem; }
-      section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 { letter-spacing: -0.02em; }
-
-      /* silly girly pop box */
-      .gr-hero {
-        position: relative;
-        overflow: hidden;
-        border-radius: 18px;
-        padding: 18px 18px 16px 18px;
-        border: 1px solid rgba(49, 51, 63, 0.14);
-        background:
-          radial-gradient(900px 180px at 10% 0%, rgba(151, 71, 255, 0.16), transparent 55%),
-          radial-gradient(900px 180px at 60% 10%, rgba(0, 209, 255, 0.14), transparent 55%),
-          radial-gradient(700px 200px at 90% 0%, rgba(255, 97, 165, 0.14), transparent 58%),
-          rgba(255,255,255,0.70);
-        box-shadow: 0 10px 30px rgba(0,0,0,0.06);
-      }
-      .gr-hero:after{
-        content:"";
-        position:absolute;
-        inset:-2px;
-        border-radius: 18px;
-        background: linear-gradient(120deg,
-          rgba(151,71,255,0.22),
-          rgba(0,209,255,0.18),
-          rgba(255,97,165,0.18));
-        filter: blur(22px);
-        opacity: 0.55;
-        z-index: 0;
-      }
-      .gr-hero * { position: relative; z-index: 1; }
-      .gr-hero-title {
-        font-size: 1.02rem;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-        margin: 0 0 0.35rem 0;
-      }
-      .gr-hero-sub {
-        font-size: 0.92rem;
-        opacity: 0.80;
-        margin: 0;
-      }
-      .pill-row { margin-top: 0.8rem; display: flex; flex-wrap: wrap; gap: 10px; }
-      .pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 6px 12px;
-        border-radius: 999px;
-        border: 1px solid rgba(49, 51, 63, 0.16);
-        background: rgba(255,255,255,0.72);
-        box-shadow: 0 1px 10px rgba(0,0,0,0.04);
-        font-size: 0.88rem;
-      }
-      .dot {
-        width: 9px;
-        height: 9px;
-        border-radius: 999px;
-        display:inline-block;
-        background: linear-gradient(135deg, rgba(151,71,255,0.95), rgba(0,209,255,0.9));
-      }
-      .dot2 { background: linear-gradient(135deg, rgba(255,97,165,0.95), rgba(255,184,107,0.9)); }
-      .dot3 { background: linear-gradient(135deg, rgba(0,209,255,0.9), rgba(57,255,20,0.55)); }
-      /* datafrm + expander spacing */
-      [data-testid="stDataFrame"] { border-radius: 14px; overflow: hidden; }
-      details { border-radius: 14px; }
-
-      /* make buttons/toggles feel more modern */
-      .stButton button, .stDownloadButton button {
-        border-radius: 12px !important;
-        padding: 0.45rem 0.9rem !important;
-      }
-
-      /* subheadr */
-      h2, h3 { letter-spacing: -0.02em; }
-
-      /* divs */
-      hr { margin: 1.35rem 0; opacity: 0.45; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-# end styling
