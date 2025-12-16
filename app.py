@@ -21,7 +21,7 @@ st.markdown(
     <style>
 
           /* layout type */
-      .block-container { padding-top: 1.1rem; padding-bottom: 2.6rem; max-width: 1220px; }
+      .block-container { padding-top: 1.1rem; padding-bottom: 1.3rem; max-width: 1220px; }
       h1 { letter-spacing: -0.03em; margin-bottom: 0.15rem; }
       [data-testid="stCaptionContainer"] { margin-top: 0.2rem; opacity: 0.85; }
 
