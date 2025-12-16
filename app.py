@@ -472,7 +472,7 @@ try:
 
     # sidebar filters
     all_counties = sorted(data["County_Name"].unique().tolist())
-    metrics = sorted(data["Metrics"].unique().tolist(), key=metric_sort_key)
+    metrics = sorted(data["Metric"].unique().tolist(), key=metric_sort_key)
 
     with st.sidebar:
         default_start = max(min_date, date(2017, 1, 1))
