@@ -577,11 +577,9 @@ try:
         unsafe_allow_html=True,
     )
     st.caption(
-        "Tip: Columns are sortable; to multi-sort pin a column. This is likely most helpful for multi-county or multi-metric reports. The leftmost data point represents the row number of the data point, ordered in the list of chronological data sets."
+        "Tip: Columns are sortable; to multi-sort pin a column. This is likely most helpful for multi-county or multi-metric reports. The leftmost data point represents the row number of the data point, ordered in the list of chronological data sets. Copied data exports as .csv."
     )
-    st.caption(
-        "The leftmost column represents the row number of the data point, ordered in the list of chronological data sets."
-    )
+
     st.dataframe(df.drop(columns=["Series", "County_Code", "Date"], errors="ignore"))
 
 except Exception as e:
