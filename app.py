@@ -548,7 +548,7 @@ try:
     )
 
     st.caption(
-        "Still, in general, major shifts in month-to-month data are rare and warrant specific explanation. For investigations into major data changes, viewers should check the y-axis range, where the minimum is the minimum data point, not zero."
+        "Still, in general, major shifts in month-to-month data are rare and warrant specific explanation. For investigations into major data changes, viewers should check the y-axis range, where the minimum value is the minimum data point, not zero."
     )
 
     st.caption(
