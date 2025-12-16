@@ -270,16 +270,6 @@ def load_all(files: list[str]):
         if "Report_Month" not in df.columns:
             df["Report_Month"] = df["Date"].dt.strftime("%b %Y")
 
-        # a.1. fix r2
-        logs.append(f"{fname}: Columns before mapping: {df.columns.tolist()}")
-        df = map_metric_columns(df)
-
-        metric_cols = [m for m in METRICS_IN_ORDER if m in df.columns]
-        if not metric_cols:
-            logs.append(
-                f"{fname}: no metric columns recognized (expected 1..29 or Cell 1..29)"
-            )
-            continue
 
         # num coerc
         for c in metric_cols:
