@@ -588,7 +588,7 @@ try:
             unsafe_allow_html=True,
     )
     st.caption(
-        "GR 237 is a monthly report prepared by the California Department of Social Services that tracks key metrics associated with California's General Relief and Interim Assistance programs, California's cash assistance programs. 
+        "GR 237 is a monthly report prepared by the California Department of Social Services that tracks key metrics associated with California's General Relief and Interim Assistance programs, California's cash assistance programs." 
     )
 
 except Exception as e:
