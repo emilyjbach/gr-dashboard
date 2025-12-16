@@ -585,7 +585,7 @@ try:
     st.markdown("---")
     st.markdown(
             "<h3 style='margin-bottom: 0.2rem;'>👩‍💻 Understanding Data</h3>",
-            unsafe_allow=True,
+            unsafe_allow_html=True,
     )
 
 except Exception as e:
