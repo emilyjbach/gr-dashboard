@@ -577,7 +577,7 @@ try:
         unsafe_allow_html=True,
     )
     st.caption(
-        "Tip: Columns are sortable. This is likely most helpful for multi-county or multi-metric reports."
+        "Tip: Columns are sortable; to multi-sort pin a column. This is likely most helpful for multi-county or multi-metric reports."
     )
     st.caption(
         "The leftmost column represents the row number of the data point, ordered in the total list of chronological data sets."
