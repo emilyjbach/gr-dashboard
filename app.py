@@ -1,7 +1,7 @@
 import re
 from datetime import date
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 import altair as alt
 import pandas as pd
@@ -81,26 +81,6 @@ def metric_sort_key(metric_name: str):
     elif "b." in lower or " b " in lower:
         sub = 2
     return (letter, number, sub)
-
-def metric_ui_label(metric_name: str) -> str:
-    s = str(metric_name).strip()
-    s = s.replace("receipient", "recipient")
-    s = re.sub(r"\s+", " ", s)
-
-    m = re.match(r"^([A-E])\.\s*(\d+)\s*([ab]?)\.\s*(.+)$", s, flags=re.IGNORECASE)
-    if m:
-        letter = m.group(1).upper()
-        num = m.group(2)
-        sub = m.group(3).lower()
-        desc = m.group(4).strip()
-        code = f"{letter}{num}{sub}"
-        return f"{code} — {desc}"
-
-    m2 = re.match(r"^([A-E])\.\s*(.+)$", s, flags=re.IGNORECASE)
-    if m2:
-        return f"{m2.group(1).upper()} — {m2.group(2).strip()}"
-
-    return s
 
 def base_dir() -> Path:
     try:
@@ -228,7 +208,7 @@ def read_gr_csv(path: Path, logs: list[str]) -> Optional[pd.DataFrame]:
     logs.append(f"{path.name}: could not find usable header row")
     return None
 
-def map_metric_columns(df: pd.DataFrame) -> pd.DataFrame:
+def map_metric_columns(df: pd.DataFrame, metrics_in_order: Sequence[str]) -> pd.DataFrame:
     rename = {}
     for c in df.columns:
         s = norm_col(c)
@@ -236,14 +216,16 @@ def map_metric_columns(df: pd.DataFrame) -> pd.DataFrame:
         if not m:
             continue
         n = int(m.group(1))
-        if 1 <= n <= len(METRICS_IN_ORDER):
-            rename[c] = METRICS_IN_ORDER[n - 1]
+        if 1 <= n <= len(metrics_in_order):
+            rename[c] = metrics_in_order[n - 1]
     if rename:
         df = df.rename(columns=rename)
     return df
 
 @st.cache_data
-def load_all(files: list[str]):
+def load_all(files: list[str], metrics_in_order_key: tuple[str, ...]):
+    metrics_in_order = list(metrics_in_order_key)
+
     logs: list[str] = []
     frames: list[pd.DataFrame] = []
     county_has_letter = re.compile(r"[A-Za-z]")
@@ -282,12 +264,12 @@ def load_all(files: list[str]):
             df["Report_Month"] = df["Date"].dt.strftime("%b %Y")
 
         logs.append(f"{fname}: Columns before mapping: {df.columns.tolist()}")
-        df = map_metric_columns(df)
+        df = map_metric_columns(df, metrics_in_order)
 
-        metric_cols = [m for m in METRICS_IN_ORDER if m in df.columns]
+        metric_cols = [m for m in metrics_in_order if m in df.columns]
         if not metric_cols:
             logs.append(
-                f"{fname}: no metric columns recognized (expected 1..29 or Cell 1..29)"
+                f"{fname}: no metric columns recognized (expected 1..{len(metrics_in_order)} or Cell 1..{len(metrics_in_order)})"
             )
             continue
 
@@ -416,7 +398,7 @@ st.caption(
 )
 
 try:
-    data, logs = load_all(GR_FILE_NAMES)
+    data, logs = load_all(GR_FILE_NAMES, tuple(METRICS_IN_ORDER))
 
     if show_debug:
         with st.expander("Debug log", expanded=True):
@@ -452,9 +434,9 @@ try:
     all_counties = sorted(data["County_Name"].unique().tolist())
 
     present_metrics = data["Metric"].dropna().astype(str).unique().tolist()
-    metrics_in_order_present = [m for m in METRICS_IN_ORDER if m in present_metrics]
-    metrics_extra = [m for m in present_metrics if m not in set(metrics_in_order_present)]
-    metrics = metrics_in_order_present + sorted(metrics_extra, key=metric_sort_key)
+    metrics = [m for m in METRICS_IN_ORDER if m in present_metrics]
+    extras = [m for m in present_metrics if m not in set(metrics)]
+    metrics = metrics + sorted(extras, key=metric_sort_key)
 
     with st.sidebar:
         default_start = max(min_date, date(2017, 1, 1))
@@ -486,7 +468,6 @@ try:
             default=[default_metric]
             if default_metric in metrics
             else (metrics[:1] if metrics else []),
-            format_func=metric_ui_label,
         )
 
     data_dated = data[
@@ -510,7 +491,7 @@ try:
     counties_label = ", ".join(selected_counties[:4]) + (
         "…" if len(selected_counties) > 4 else ""
     )
-    metrics_label = ", ".join([metric_ui_label(m) for m in selected_metrics[:4]]) + (
+    metrics_label = ", ".join(selected_metrics[:4]) + (
         "…" if len(selected_metrics) > 4 else ""
     )
 
@@ -598,4 +579,3 @@ try:
 except Exception as e:
     st.error("The app crashed. Here’s the full error (so it won’t look like a blank page):")
     st.exception(e)
-
