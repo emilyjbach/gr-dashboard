@@ -461,4 +461,132 @@ try:
     st.markdown(
         f"""
         <div class="gr-hero">
-          <div class="gr
+          <div class="gr-hero-title">GR 237 - General Relief and Interim Assistance to Applicants for SSI/SSP Monthly Caseload and Expenditure Statistical Report</div>
+          <p class="gr-hero-sub">Source Data: https://www.cdss.ca.gov/inforesources/research-and-data/disability-adult-programs-data-tables/gr-237</p>
+          <div class="pill-row">
+            <span class="pill"><span class="dot"></span><b>Rows</b>&nbsp;{len(data):,}</span>
+            <span class="pill"><span class="dot dot2"></span><b>Date range</b>&nbsp;{min_date} → {max_date}</span>
+            <span class="pill"><span class="dot dot3"></span><b>Files</b>&nbsp;{len(GR_FILE_NAMES)}</span>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown("<div style='height: 0.9rem;'></div>", unsafe_allow_html=True)
+    # hero end
+
+    # sidebar filters
+    all_counties = sorted(data["County_Name"].unique().tolist())
+    metrics = sorted(data["Metric"].unique().tolist(), key=metric_sort_key)
+
+    with st.sidebar:
+        default_start = max(min_date, date(2017, 1, 1))
+        default_end = max_date  # show through 2025 if those files load
+
+        date_range = st.slider(
+            "Date Range",
+            min_value=min_date,
+            max_value=max_date,
+            value=(default_start, default_end),
+            format="YYYY/MM/DD",
+        )
+
+        says_default_counties = ["Contra Costa", "Kern"]
+        default_counties = [c for c in says_default_counties if c in all_counties]
+        if not default_counties:
+            default_counties = all_counties[:2]
+
+        selected_counties = st.multiselect(
+            "Counties",
+            options=all_counties,
+            default=default_counties,
+        )
+
+        default_metric = "A. 2. Cases added during month"
+        selected_metrics = st.multiselect(
+            "Metrics",
+            options=metrics,
+            default=[default_metric]
+            if default_metric in metrics
+            else (metrics[:1] if metrics else []),
+        )
+
+    # filtered view
+    data_dated = data[
+        (data["Date"].dt.date >= date_range[0])
+        & (data["Date"].dt.date <= date_range[1])
+    ].copy()
+
+    df = data_dated[
+        data_dated["County_Name"].isin(selected_counties)
+        & data_dated["Metric"].isin(selected_metrics)
+    ].dropna(subset=["Value"]).copy()
+
+    if df.empty:
+        st.warning("No data for the selected filters.")
+        st.stop()
+
+    df["Series"] = df["County_Name"] + " - " + df["Metric"]
+
+    # --- AUTO-UPDATING TITLE (counties + metrics + date range) ---
+    counties_label = ", ".join(selected_counties[:4]) + (
+        "…" if len(selected_counties) > 4 else ""
+    )
+    metrics_label = ", ".join(selected_metrics[:2]) + (
+        "…" if len(selected_metrics) > 2 else ""
+    )
+    start_label = date_range[0].strftime("%Y/%m/%d")
+    end_label = date_range[1].strftime("%Y/%m/%d")
+
+    st.markdown(
+        f"""
+        <h3 style='margin: 0.2rem 0 0.25rem 0;'>Trends in: {counties_label}</h3>
+        <div style="opacity:0.82; font-size:0.95rem; margin-bottom:0.6rem;">
+            <b>Metrics:</b> {metrics_label} &nbsp; • &nbsp;
+            <b>Period:</b> {start_label} → {end_label}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    # --- end auto title ---
+
+    chart_title = (
+        f"Trends: {counties_label} | {metrics_label} | {start_label} → {end_label}"
+    )
+
+    chart = (
+        alt.Chart(df)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X("Date:T", axis=alt.Axis(title="Report Month", format="%b %Y")),
+            y=alt.Y("Value:Q", scale=alt.Scale(zero=False), title="Value"),
+            color=alt.Color("Series:N"),
+            tooltip=[
+                alt.Tooltip("Report_Month:N"),
+                alt.Tooltip("County_Name:N"),
+                alt.Tooltip("Metric:N"),
+                alt.Tooltip("Value:Q", format=",.0f"),
+            ],
+        )
+        .properties(title=chart_title)
+        .interactive()
+    )
+
+    st.altair_chart(chart, use_container_width=True)
+
+    st.markdown("---")
+    st.markdown(
+        "<h3 style='margin-bottom: 0.2rem;'>🧾 Underlying Data</h3>",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Tip: Columns are sortable. This is likely most helpful for multi-county or multi-metric reports."
+    )
+    st.caption(
+        "The leftmost column represents the row number of the data point, ordered in the total list of chronological data sets."
+    )
+    st.dataframe(df.drop(columns=["Series"], errors="ignore"))
+
+except Exception as e:
+    st.error("The app crashed. Here’s the full error (so it won’t look like a blank page):")
+    st.exception(e)
