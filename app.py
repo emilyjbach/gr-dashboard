@@ -476,32 +476,23 @@ try:
     st.markdown("---")
     st.markdown("<h3 style='margin-bottom: 0.2rem;'>Interpreting Data</h3>", unsafe_allow_html=True)
 
-    st.caption(
-        "GR 237 is a monthly report produced by the California Department of Social Services (CDSS) documenting county-level data changes in General Relief and Interim Assistance cases. These programs provide cash benefits to thousands of Californians each month."
-    )
-
-    st.caption(
+    data_interpretation_notes = [
+        "GR 237 is a monthly report produced by the California Department of Social Services (CDSS) documenting county-level data changes in General Relief and Interim Assistance cases. These programs provide cash benefits to thousands of Californians each month.",
+        
         "There are no strict rules for interpreting GR 237 data and local sources with a direct tie to impacted communities should be consulted for a full explanation of trends. The Roots Community Health Center, for example, prepared an **[excellent report](https://rootscommunityhealth.org/wp-content/uploads/2014/07/GA_eval_12.pdf)** utilizing and contextualizing data trends in Alameda County's GA Program (which itself recommends a dashboard like this one.)",
-        unsafe_allow_html=True,
-    )
-
-    st.caption(
-        "Still, in general, major shifts in month-to-month data are rare and warrant specific explanation. For investigations into major data changes, viewers should check the y-axis range, where the minimum value is the minimum data point, not zero."
-    )
-
-    st.caption(
+        
+        "Still, in general, major shifts in month-to-month data are rare and warrant specific explanation. For investigations into major data changes, viewers should check the y-axis range, where the minimum value is the minimum data point, not zero.",
+        
         "Beginning in March 2020, CDSS adopted **[a policy](https://www.cdss.ca.gov/portals/9/Data%20De-Identification%20Guidelines%20DSS%20Reference%20Guide_FINAL.pdf)** that replaced values 1-11 with a * (star) for sensitive caseload metrics, which here, includes all non-dollar metrics. CDSS instituted these changes, known as de-identification, to safeguard privacy rights. De-identification has **[widely-appreciated](https://pmc.ncbi.nlm.nih.gov/articles/PMC8110889/)** **[racial equity](https://healthlaw.org/wp-content/uploads/2023/03/Striking-the-Balance_for-publication.pdf)** **[benefits](https://aisp.upenn.edu/wp-content/uploads/2025/02/Centering-Equity-Toolkit-2.0.pdf)** in the context of public data sets without demographic information, like GR 237.",
-        unsafe_allow_html=True,
-    )
-
-    st.caption(
+        
         "All data prior to 2020 was updated accordingly. Where a star appears in a data set, no value is recorded on the graph or in the underlying data. This has important impacts for individuals analyzing data from small counties, where changes in small month-to-month caseloads (and the data associated with them) can be eschewed or disappear entirely.",
-    )
-
-    st.caption(
+        
         "Where a zero appears in a data set, a zero value is recorded on the graph and underlying data."
-    )
+    ]
 
+    for txt in data_interpretation_notes:
+        st.caption(txt, unsafe_allow_html=True)
+        
 except Exception as err:
     st.error("The app crashed. Here’s the full error (so it won’t look like a blank page):")
     st.exception(err)
