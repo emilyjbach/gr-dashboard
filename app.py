@@ -18,7 +18,7 @@ st.set_page_config(
 # files
 GR_FILE_NAMES = [
     "15-16.csv", "16-17.csv", "17-18.csv", "18-19.csv", "19-20.csv",
-    "20-21.csv", "21-22.csv", "22-23.csv", "23-24.csv", "24-25.csv"
+    "20-21.csv", "21-22.csv", "22-23.csv", "23-24.csv", "24-25.csv",
 ]
 
 # metrics
@@ -83,9 +83,9 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     to_drop = []
     for col in df.columns:
         clean_name = norm_col(col)
-        if clean_name == "" or clean_name.lower().startswith("unnamed") or clean_name.strip() == "":
+        if not clean_name or clean_name.lower().startswith("unnamed"):
             to_drop.append(col)
-    
+
     if to_drop:
         df = df.drop(columns=to_drop, errors="ignore")
 
@@ -113,20 +113,18 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 def parse_date_series(s: pd.Series) -> pd.Series:
     s = s.astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
-    
-    res = pd.Series(pd.NaT, index=s.index)
-    res = res.fillna(pd.to_datetime(s.str.upper(), format="%b%y", errors="coerce"))
+
+    res = pd.Series(pd.NaT, index=s.index).fillna(
+        pd.to_datetime(s.str.upper(), format="%b%y", errors="coerce")
+    )
 
     numeric_vals = pd.to_numeric(s, errors="coerce")
     idx = numeric_vals.dropna().index
     if len(idx) > 0:
         yyyymm = numeric_vals.loc[idx].astype(int).astype(str)
-        res.loc[idx] = res.loc[idx].fillna(
-            pd.to_datetime(yyyymm, format="%Y%m", errors="coerce")
-        )
+        res.loc[idx] = res.loc[idx].fillna(pd.to_datetime(yyyymm, format="%Y%m", errors="coerce"))
 
-    fmts = ("%Y-%m", "%Y-%m-%d", "%m/%Y", "%m/%d/%Y", "%b %Y", "%B %Y")
-    for f in fmts:
+    for f in ("%Y-%m", "%Y-%m-%d", "%m/%Y", "%m/%d/%Y", "%b %Y", "%B %Y"):
         res = res.fillna(pd.to_datetime(s, format=f, errors="coerce"))
 
     return res.fillna(pd.to_datetime(s, errors="coerce"))
@@ -170,9 +168,7 @@ def read_gr_csv(path: Path, logs: list[str]) -> Optional[pd.DataFrame]:
             df = pd.read_csv(path, header=h_idx, engine="python")
             df = normalize_columns(df)
             col_blob = " ".join([norm_col(c).lower() for c in df.columns])
-            if ("county" in col_blob) and (
-                ("date" in col_blob) or ("report month" in col_blob) or ("report_month" in col_blob)
-            ):
+            if "county" in col_blob and (("date" in col_blob) or ("report month" in col_blob) or ("report_month" in col_blob)):
                 logs.append(f"{path.name}: read with header={h_idx} (fallback)")
                 return df
         except Exception:
@@ -191,7 +187,6 @@ def map_metric_columns(df: pd.DataFrame, metrics_in_order: list[str]) -> pd.Data
         cell_num = int(match.group(1))
         if 1 <= cell_num <= len(metrics_in_order):
             mapping[col] = metrics_in_order[cell_num - 1]
-    
     return df.rename(columns=mapping) if mapping else df
 
 @st.cache_data
@@ -216,10 +211,9 @@ def load_all(files: list[str], metrics_in_order_key: tuple[str, ...]):
             continue
 
         df["County_Name"] = df["County_Name"].astype(str).str.strip()
-        df = df[df["County_Name"] != "Statewide"].copy()
-        df = df.dropna(subset=["County_Name"]).copy()
-        df = df[df["County_Name"].apply(lambda x: bool(has_alpha.search(x)))].copy()
-        
+        df = df.loc[df["County_Name"].ne("Statewide")].dropna(subset=["County_Name"])
+        df = df.loc[df["County_Name"].apply(lambda x: bool(has_alpha.search(x)))].copy()
+
         if df.empty:
             logs.append(f"{f}: empty after county filtering")
             continue
@@ -267,8 +261,7 @@ def load_all(files: list[str], metrics_in_order_key: tuple[str, ...]):
     if not frames:
         return pd.DataFrame(), logs
 
-    all_data = pd.concat(frames, ignore_index=True)
-    all_data = all_data.sort_values("Date").reset_index(drop=True)
+    all_data = pd.concat(frames, ignore_index=True).sort_values("Date").reset_index(drop=True)
     return all_data.drop_duplicates(subset=["Date", "County_Name", "Metric"], keep="first"), logs
 
 st.markdown(
@@ -370,9 +363,7 @@ try:
                 st.write(l)
 
     if data.empty:
-        st.error(
-            "No data loaded. Turn on the debug log to see which file(s) failed and why."
-        )
+        st.error("No data loaded. Turn on the debug log to see which file(s) failed and why.")
         st.stop()
 
     min_date = data["Date"].min().date()
@@ -411,9 +402,7 @@ try:
         )
 
         wanted_counties = ["Contra Costa", "Kern"]
-        default_counties = [c for c in wanted_counties if c in all_counties]
-        if not default_counties:
-            default_counties = all_counties[:2]
+        default_counties = [c for c in wanted_counties if c in all_counties] or all_counties[:2]
 
         selected_counties = st.multiselect(
             "Counties",
@@ -429,14 +418,10 @@ try:
         )
 
     # Filtering
-    subset = data[
-        (data["Date"].dt.date >= date_range[0])
-        & (data["Date"].dt.date <= date_range[1])
-    ].copy()
+    subset = data[(data["Date"].dt.date >= date_range[0]) & (data["Date"].dt.date <= date_range[1])].copy()
 
     plot_df = subset[
-        subset["County_Name"].isin(selected_counties)
-        & subset["Metric"].isin(selected_metrics)
+        subset["County_Name"].isin(selected_counties) & subset["Metric"].isin(selected_metrics)
     ].dropna(subset=["Value"]).copy()
 
     if plot_df.empty:
